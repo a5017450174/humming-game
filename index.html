@@ -1860,10 +1860,15 @@ function headLoop(){
   redraw(at); headRAF=requestAnimationFrame(headLoop);
 }
 const span=()=>curve&&curve.length?Math.max(1,curve[curve.length-1].t):1;
+/* 播放到哪，畫面上就要有一條線跟著跑。
+   ⚠ 每加一個有波形的畫面都要記得加進來——
+      房間的搶答畫面（cvLive）之前就是漏在這裡，播了完全沒有線。 */
 function redraw(head){
   if($("s-guess").classList.contains("on")) drawGuessRoll(head);
   else if($("s-res").classList.contains("on")) drawResultRoll(head);
   else if($("s-check").classList.contains("on")) drawRoll("cvV",curve,{span:span(),head});
+  else if($("s-room").classList.contains("on")&&$("rmLive").style.display!=="none")
+    drawRoll("cvLive",curve,{span:span(),head});
 }
 
 /* ============ 鋼琴捲軸 ============ */
@@ -1926,8 +1931,24 @@ function drawRoll(id,c,opt){
     g.fillStyle="hsl("+hue+","+sat+"%,"+lit+"%)";
     g.fillRect(x,y-hh/2,2.4,hh);
   }
+  /* 播放頭：一條會發光的線＋頂端一個三角標記。
+     原本只有 2px 的細線，在密密麻麻的音高點裡面根本看不到。 */
   if(opt.head!=null&&opt.head>=0&&opt.head<=sp){
-    g.fillStyle="rgba(245,185,66,.9)"; g.fillRect(X(opt.head)-1,0,2,h);
+    const hx=X(opt.head);
+    g.save();
+    /* 走過的地方壓暗一點，一眼就知道播到哪 */
+    g.fillStyle="rgba(0,0,0,.30)";
+    g.fillRect(PADL,0,Math.max(0,hx-PADL),h);
+    /* 光暈 */
+    g.shadowColor="rgba(245,185,66,.9)"; g.shadowBlur=10;
+    g.fillStyle="rgba(255,214,120,.95)";
+    g.fillRect(hx-1.5,0,3,h);
+    g.shadowBlur=0;
+    /* 頂端的三角標記 */
+    g.fillStyle="#ffd678";
+    g.beginPath();
+    g.moveTo(hx-6,0); g.lineTo(hx+6,0); g.lineTo(hx,9); g.closePath(); g.fill();
+    g.restore();
   }
 }
 function drawGuessRoll(head){ drawRoll("cvG",curve,{span:span(),head}); }
@@ -2287,7 +2308,15 @@ async function setupLive(){
     if(!amPerformer()) liveFeed(lv.f);
     if(lv.done) liveAudioFinish();
   }
-  /* 確認之後：整條資料已經收齊，改用完整曲線（可以重播、可以壓住重聽） */
+  /* 確認之後：整條資料已經收齊，改用完整曲線（可以重播、可以壓住重聽）。
+     ⚠ 中途才進房間的人這時候 lvCurve 是空的，要補收一次，
+        但不能出聲——不然他一進來就被放一段。 */
+  if(st==="guess"&&!amPerformer()){
+    const had=lvCurve.length;
+    liveFeed(lv.f,true);
+    if(!had&&lvCurve.length)
+      setTimeout(()=>drawRoll("cvLive",lvCurve,{span:span()}),40);
+  }
   if(st==="guess"&&lvCurve.length){ curve=lvCurve; }
 
   $("liveask").textContent="謎底是哪"+(CNUM[pz.len]||pz.len)+"個字？";
@@ -2523,7 +2552,9 @@ function liveReset(take){
   curve=null;
   drawRoll("cvLive",[{t:0,m:null,v:0}],{span:1});
 }
-function liveFeed(frames){
+/* silent＝只把線條補起來、不要出聲。
+   用在「他已經唱完、我才剛進房間」的人身上：波形要看得到，但不能突然放一段給他聽。 */
+function liveFeed(frames,silent){
   const list=Object.keys(frames||{}).sort();
   let added=[];
   for(const k of list){
@@ -2536,7 +2567,7 @@ function liveFeed(frames){
   added.sort((a,b)=>a.t-b.t);
   lvCurve=lvCurve.concat(added).sort((a,b)=>a.t-b.t);
   curve=lvCurve;
-  liveAudioAppend(added);
+  if(!silent) liveAudioAppend(added);
   if(!lvDrawRAF) lvDrawRAF=requestAnimationFrame(()=>{
     lvDrawRAF=null;
     drawRoll("cvLive",lvCurve,{span:Math.max(2,lvCurve[lvCurve.length-1].t+0.5)});
@@ -2603,7 +2634,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0804c";
+const BUILD="0804d";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
