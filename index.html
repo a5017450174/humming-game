@@ -196,7 +196,9 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
 /* ---------- 鋼琴捲軸 ---------- */
 .roll{position:relative;border-radius:19px;overflow:hidden;background:#100d09;
-  border:1px solid var(--hair);box-shadow:inset 0 2px 14px rgba(0,0,0,.6)}
+  border:1px solid var(--hair);box-shadow:inset 0 2px 14px rgba(0,0,0,.6);
+  /* 手機上長按波形是「從這裡開始聽」，不要跳出選字／複製的選單 */
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .roll canvas{display:block;width:100%;height:300px;touch-action:none}
 .roll .lbl{position:absolute;right:11px;bottom:9px;font-size:11.5px;color:var(--faint);
   letter-spacing:.08em;pointer-events:none;background:rgba(12,10,7,.72);
@@ -288,6 +290,11 @@ input[readonly]{font-size:13px;color:var(--dim)}
   .core.pad-s{padding:16px}
   .btn{padding:14px 19px}
   .btn.big{padding:16px 24px;font-size:16px}
+  /* 手指點得到：手機上小按鈕也要有 44px 以上 */
+  .btn.sm{padding:13px 17px;font-size:14.5px}
+  .tone{padding:12px 15px;font-size:14px}
+  .chip .nm{padding:12px 6px 12px 16px}
+  .chip .fd{padding:12px 14px 12px 8px}
   .row .btn{flex:1 1 auto;min-width:46%}
   .row .btn.wide{min-width:100%}
   .roll canvas{height:260px}
@@ -909,6 +916,24 @@ function ensureAC(){
   if(AC.state==="suspended") AC.resume();
   return AC;
 }
+/* iPhone / Safari 的規矩：沒有經過使用者親自碰畫面，聲音一律不准出來。
+   所以第一次碰到畫面就先把音訊叫醒，之後按播放才不會「按了沒聲音」。
+   ⚠ 手機上少了這段，猜的人會以為遊戲壞掉。 */
+let audioUnlocked=false;
+function unlockAudio(){
+  try{
+    ensureAC();
+    if(!audioUnlocked&&AC){
+      /* 某些版本的 Safari 要真的發過一次聲才算解鎖，所以播一格無聲 */
+      const b=AC.createBuffer(1,1,AC.sampleRate);
+      const s=AC.createBufferSource();
+      s.buffer=b; s.connect(AC.destination); s.start(0);
+      audioUnlocked=true;
+    }
+  }catch(e){}
+}
+addEventListener("touchend",unlockAudio,{passive:true});
+addEventListener("pointerdown",unlockAudio,{passive:true});
 async function initAudio(){
   ensureAC(); await AC.resume(); sr=AC.sampleRate;
   if(micOK) return true;
@@ -1610,7 +1635,11 @@ function safeName(s){ return String(s||"哼歌猜字").replace(/[\\\/:*?"<>|]/g,
 function downloadRaw(){
   const b=(draft&&draft.rawBlob)?draft.rawBlob:rawBlob;
   if(!b){ alert("這一題沒有錄到原音。"); return; }
-  const ext=(b.type&&b.type.indexOf("ogg")>=0)?"ogg":"webm";
+  /* 附檔名要照實際格式給。iPhone 錄出來是 mp4，硬給 .webm 的話檔案會打不開。 */
+  const t=(b.type||"").toLowerCase();
+  const ext=t.indexOf("mp4")>=0||t.indexOf("aac")>=0 ? "m4a"
+          : t.indexOf("ogg")>=0 ? "ogg"
+          : t.indexOf("wav")>=0 ? "wav" : "webm";
   dlBlob(b,"哼歌猜字_原音_"+safeName(draft&&draft.target)+"."+ext);
 }
 /* 把兩軌照現在拉霸的比例算成一個 WAV 檔 */
@@ -1777,7 +1806,7 @@ $("gword").addEventListener("keydown",e=>{ if(e.key==="Enter") submitGuess(); })
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0803m";
+const BUILD="0803n";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
