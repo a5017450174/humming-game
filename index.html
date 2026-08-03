@@ -447,40 +447,35 @@ input[readonly]{font-size:13px;color:var(--dim)}
 <div id="s-link" class="screen">
   <div class="stack tight">
     <div class="eyebrow"><i></i>做好了</div>
-    <h2>把「代碼」貼到群組</h2>
+    <h2>把連結貼到群組</h2>
   </div>
   <div class="shell">
     <div class="core gold">
-      <div class="eyebrow"><i></i>題目代碼——朋友靠這串玩</div>
-      <input type="text" id="codeout" readonly onclick="this.select()">
+      <div class="eyebrow"><i></i>連結——朋友點開直接玩</div>
+      <input type="text" id="linkout" readonly onclick="this.select()">
       <p class="tiny" id="linkinfo"></p>
       <div class="row">
-        <button class="btn go" style="flex:1" id="copycode" onclick="copyCode()">
-          複製代碼 <span class="cir">⧉</span></button>
+        <button class="btn go" style="flex:1" id="copybtn" onclick="copyLink()">
+          複製連結 <span class="cir">⧉</span></button>
+        <button class="btn sm" onclick="testLink()">自己先開一次</button>
       </div>
-      <p class="dim">朋友打開遊戲後，把這串貼進首頁的<b>「拿到題目代碼？」</b>框框就開始猜。
+      <p class="dim">朋友點開就直接進題目：聽、猜、看成績，<b>截圖成績回報就好</b>。
         手機也可以，不用麥克風、不用裝東西。</p>
+      <p class="tiny">「自己先開一次」應該直接跳到「出題考你」的畫面、
+        最下面寫<b>版本 <span id="chkver"></span></b>。連到：<b id="linkhost"></b>　你這邊：<b id="linkver"></b>
+        <button class="btn sm" onclick="editPub()" style="margin-left:8px">換網址</button></p>
     </div>
   </div>
 
   <div class="shell">
-    <div class="core">
-      <div class="eyebrow t"><i></i>朋友要去哪裡打開遊戲（二選一）</div>
-      <p class="dim"><b class="gold">傳檔案（最穩）：</b>把 Drive「聲音」資料夾裡的
-        <b>哼歌猜字_給朋友玩.html</b> 丟進群組，朋友存起來點兩下就開。
-        <b>只要傳這一次</b>，之後每輪只要貼新代碼。</p>
-      <p class="dim"><b class="gold">傳網址：</b>下面這條。⚠ 點開<b>只會到遊戲首頁</b>，
-        題目一樣要靠代碼——網站的外殼會把連結上帶的資料擋掉，這是平台限制。</p>
-      <input type="text" id="linkout" readonly onclick="this.select()">
+    <div class="core pad-s">
+      <div class="eyebrow t"><i></i>備用：題目代碼</div>
+      <input type="text" id="codeout" readonly onclick="this.select()">
       <div class="row">
-        <button class="btn" style="flex:1" id="copybtn" onclick="copyLink()">
-          複製網址 <span class="cir">⧉</span></button>
-        <button class="btn sm" onclick="testLink()">自己先開一次看看</button>
-        <button class="btn sm" onclick="editPub()">換網址</button>
+        <button class="btn sm" id="copycode" onclick="copyCode()">複製代碼</button>
       </div>
-      <p class="tiny">開起來要看到遊戲首頁、最下面寫<b>版本 <span id="chkver"></span></b>才是最新的。
-        版本比較舊＝網站那份還沒更新，先用傳檔案的方式。
-        連到：<b id="linkhost"></b>　你這邊：<b id="linkver"></b></p>
+      <p class="tiny">連結打不開的時候用：把 <b>哼歌猜字_給朋友玩.html</b> 檔案丟給朋友，
+        他點兩下打開，把這串貼進首頁的「拿到題目代碼？」框框，一樣能玩。</p>
     </div>
   </div>
 
@@ -1088,12 +1083,12 @@ async function buildPacket(){
    ⚠ 一定要是「別人打得開」的網址——你是在 localhost 上錄音的，
    直接用當下的網址會變成 http://localhost:8123/...，別人點了只會看到錯誤。
    換了線上版就改下面這行，或在連結那頁按「換網址」。 */
-/* ⚠ 2026-08-03 實測出來的殘酷事實：claude.ai 的外殼「不會」把網址後面的 #q= 資料
-   傳進遊戲的框架裡（外層有 1413 字，框架裡是空的）。所以連結只負責把人帶到遊戲首頁，
-   題目一律走「代碼」：朋友把代碼貼進首頁的框框。
-   用回 14e2f0bf 這條的原因：它已經公開、外面的人打得開；4191814d 那條從來沒公開成功過。 */
-const PUB_DEFAULT="https://claude.ai/code/artifact/14e2f0bf-e0dd-4228-a464-c1a5aa392e09";
-const PUB_DEAD=["4191814d-cf97-41f2-826d-f9a8d4038093"];
+/* 2026-08-03 搬家到 GitHub Pages。這個網址打開「就是遊戲本身」，中間沒有外殼，
+   所以連結後面的 #q= 題目資料直接進得來——朋友點連結就直接開始猜。
+   （之前 claude.ai 的兩條網址都不行：外殼會把 #q= 整包擋掉，實測外層 1413 字、框架 0 字。） */
+const PUB_DEFAULT="https://a5017450174.github.io/humming-game/";
+const PUB_DEAD=["4191814d-cf97-41f2-826d-f9a8d4038093",
+                "14e2f0bf-e0dd-4228-a464-c1a5aa392e09"];
 function linkBase(){
   let pub=(localStorage.getItem("pubURL")||"").trim();
   if(pub&&PUB_DEAD.some(d=>pub.indexOf(d)>=0)){
@@ -1117,12 +1112,13 @@ async function makeLink(){
     if(fromName) localStorage.setItem("myName",fromName);
   }
   const packet=await buildPacket();
+  const url=linkBase()+"#q="+packet;
+  $("linkout").value=url;
   $("codeout").value=packet;
-  $("linkout").value=linkBase();
-  $("linkinfo").textContent=pack.length+" 題，代碼長度 "+packet.length+" 字。"+
-    (packet.length>7000?"有點長，有些聊天軟體會把太長的訊息截斷——少錄一題或錄短一點比較保險。":"長度沒問題。");
+  $("linkinfo").textContent=pack.length+" 題，連結長度 "+url.length+" 字。"+
+    (url.length>7000?"有點長，有些聊天軟體會把太長的訊息截斷——少錄一題或錄短一點比較保險。":"長度沒問題。");
+  $("copybtn").innerHTML='複製連結 <span class="cir">⧉</span>';
   $("copycode").innerHTML='複製代碼 <span class="cir">⧉</span>';
-  $("copybtn").innerHTML='複製網址 <span class="cir">⧉</span>';
   $("linkhost").textContent=linkBase().replace(/^https?:\/\//,"");
   $("linkver").textContent=BUILD;
   show("s-link");
@@ -1542,7 +1538,7 @@ $("gword").addEventListener("keydown",e=>{ if(e.key==="Enter") submitGuess(); })
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0803i";
+const BUILD="0803j";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
