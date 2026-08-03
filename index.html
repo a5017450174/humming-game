@@ -184,6 +184,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
 .reclamp{width:11px;height:11px;border-radius:50%;background:var(--rose);flex:none;
   box-shadow:0 0 13px var(--rose);animation:blink 1.15s var(--spring) infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.28}}
+/* 待命 vs 錄音中的小燈 */
+.dot{width:9px;height:9px;border-radius:50%;flex:none;font-style:normal}
+.dot.wait{background:var(--teal);box-shadow:0 0 10px var(--teal);
+  animation:breathe 2s var(--spring) infinite}
+.dot.rec{background:var(--rose);box-shadow:0 0 13px var(--rose);
+  animation:blink 1.15s var(--spring) infinite}
+@keyframes breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+.ready{font-size:clamp(27px,7vw,40px);font-weight:700;text-align:center;letter-spacing:-.02em;
+  color:var(--teal);text-shadow:0 0 34px rgba(95,201,180,.4)}
 
 /* ---------- 鋼琴捲軸 ---------- */
 .roll{position:relative;border-radius:19px;overflow:hidden;background:#100d09;
@@ -407,24 +416,43 @@ input[readonly]{font-size:13px;color:var(--dim)}
 <!-- ======== 3. 錄音中 ======== -->
 <div id="s-rec" class="screen">
   <div class="stack tight">
-    <div class="eyebrow"><i class="reclamp" style="width:9px;height:9px"></i>錄音中</div>
+    <div class="eyebrow" id="receyebrow"><i class="dot wait" id="recdot"></i><span id="recstate">隨時可以開始</span></div>
     <h2 id="rechead"></h2>
   </div>
-  <div class="shell">
+
+  <!-- 待命：麥克風在聽，但還沒開始算秒數 -->
+  <div class="shell" id="armbox">
+    <div class="core teal">
+      <div class="ready">準備好就唱</div>
+      <p class="dim" style="text-align:center">
+        <b>你一出聲才開始計時</b>，前面要想多久都沒關係。</p>
+      <div class="meterwrap"><div class="meter" id="armmeter"></div></div>
+      <p class="tiny" style="text-align:center">這條會跟著你的聲音動——動得起來就代表麥克風有收到。</p>
+      <div class="row">
+        <button class="btn" style="flex:1" onclick="beginRecording()">不等了，直接開始</button>
+        <button class="btn sm" onclick="cancelRecord()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 真的在錄了 -->
+  <div class="shell" id="recbox" style="display:none">
     <div class="core">
       <div class="clock"><span id="rectime">20</span><small>秒</small></div>
       <div class="meterwrap"><div class="meter" id="recmeter"></div></div>
       <p class="tiny" style="text-align:center">看得到這條在動，就代表有收到你的聲音。</p>
     </div>
   </div>
+
   <div class="roll"><canvas id="cvRec"></canvas><div class="lbl">你的音高</div></div>
-  <div class="row">
+  <div class="row" id="recbtns" style="display:none">
     <button class="btn go big" style="flex:1" onclick="stopRecord()">
       唱完了 <span class="cir">■</span></button>
     <button class="btn big" onclick="restartRecord()">
       唱壞了，重來 <span class="cir">↻</span></button>
   </div>
-  <p class="tiny" style="text-align:center">「重來」＝這一次不要了，直接從頭再錄一次。</p>
+  <p class="tiny" id="recnote" style="text-align:center;display:none">
+    「重來」＝這一次不要了，回到「準備好就唱」重新等你開口。</p>
 </div>
 
 <!-- ======== 4. 試聽 ======== -->
@@ -813,7 +841,7 @@ function findLyrics(song){
 
 /* ============ 狀態 ============ */
 let AC=null,analyser=null,buf=null,sr=44100,micOK=false,micStream=null;
-let cur=[],curve=null,recording=false,recStart=0,tickTimer=null,voices=[];
+let cur=[],curve=null,recording=false,armed=false,armHits=0,recStart=0,tickTimer=null,voices=[];
 let heldOn=false,nowPlaying=null,headRAF=null;
 let mrec=null,chunks=[],rawURL=null,rawBlob=null;
 let pack=[],qIdx=0,draft=null,mode=null;   // mode: "make" | "guess"
@@ -990,11 +1018,58 @@ async function toRecord(){
   stopAll(); clearTimer(); rawClear();
   draft={target:w,song:$("mkSong").value.trim(),curve:null,raw:null,rawBlob:null};
   $("rechead").innerHTML='謎底是「<span class="gold">'+esc(w)+'</span>」';
+  cur=[]; curve=null;
+  armRecord();
+}
+
+/* ---- 先「待命」，等你真的出聲才開始錄 ----
+   為什麼要這樣：以前按下去就開始算 20 秒，玩家還在想歌的那五秒也被錄進去，
+   等於白白浪費五秒額度，朋友聽到的開頭也是一片安靜。
+   現在麥克風先聽著、不計時，偵測到你出聲才真正開錄。 */
+const ARM_RMS=0.02;   // 要多大聲才算「開口了」
+const ARM_HOLD=3;     // 連續幾格（約 50 毫秒）才算數，免得咳嗽、滑鼠聲就觸發
+function armRecord(){
+  recording=false; armed=true; armHits=0;
+  $("recstate").textContent="隨時可以開始";
+  $("recdot").className="dot wait";
+  $("armbox").style.display="";
+  $("recbox").style.display="none";
+  $("recbtns").style.display="none";
+  $("recnote").style.display="none";
+  $("armmeter").style.width="0%";
+  $("recmeter").style.width="0%";
+  $("rectime").textContent="20";
   show("s-rec");
+  requestAnimationFrame(armLoop);
+}
+function armLoop(){
+  if(!armed) return;
+  analyser.getFloatTimeDomainData(buf);
+  let rms=0; for(let i=0;i<buf.length;i++) rms+=buf[i]*buf[i];
+  rms=Math.sqrt(rms/buf.length);
+  $("armmeter").style.width=Math.min(100,rms*600)+"%";
+  if(rms>=ARM_RMS) armHits++; else armHits=0;
+  if(armHits>=ARM_HOLD){ beginRecording(); return; }
+  requestAnimationFrame(armLoop);
+}
+function beginRecording(){
+  if(recording) return;
+  armed=false;
+  $("recstate").textContent="錄音中";
+  $("recdot").className="dot rec";
+  $("armbox").style.display="none";
+  $("recbox").style.display="";
+  $("recbtns").style.display="";
+  $("recnote").style.display="";
   cur=[]; recording=true; recStart=performance.now();
   rawStart();
   countdown(20,"rectime",stopRecord);
   requestAnimationFrame(recLoop);
+}
+function cancelRecord(){
+  armed=false; recording=false; clearTimer();
+  rawStop(); rawClear(); draft=null;
+  toMake();
 }
 function recLoop(){
   if(!recording) return;
@@ -1033,7 +1108,8 @@ function restartRecord(){
   if(draft){ draft.raw=null; draft.rawBlob=null; }
   cur=[]; curve=null;
   $("recmeter").style.width="0%";
-  setTimeout(toRecord,150);   // 等麥克風那邊收乾淨再開下一輪
+  /* 回到「準備好就唱」等你開口，不要直接開始計時 */
+  setTimeout(armRecord,150);   // 等麥克風那邊收乾淨再開下一輪
 }
 function reRecord(){ stopAll(); toRecord(); }
 function keepDraft(){
@@ -1701,7 +1777,7 @@ $("gword").addEventListener("keydown",e=>{ if(e.key==="Enter") submitGuess(); })
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0803k";
+const BUILD="0803m";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
