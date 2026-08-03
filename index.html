@@ -194,6 +194,13 @@ input[readonly]{font-size:13px;color:var(--dim)}
   padding:4px 10px;border-radius:99px;backdrop-filter:blur(6px)}
 .roll.hold{border-color:rgba(245,185,66,.42)}
 
+/* ---------- 混音台 ---------- */
+.mix{display:grid;grid-template-columns:62px 1fr 38px;gap:11px 12px;align-items:center}
+.mix label{font-size:13.5px;color:#cfc6b7}
+.mix .val{font-size:12.5px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+.mix input[type=range]{width:100%;accent-color:var(--gold);height:22px}
+.mix input[type=range].v{accent-color:var(--teal)}
+
 /* ---------- 音色 ---------- */
 .tones{display:flex;gap:6px;padding:5px;border-radius:999px;
   background:rgba(0,0,0,.28);border:1px solid var(--hair);flex-wrap:wrap}
@@ -434,6 +441,33 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <button class="btn sm" onclick="stopAll()">■ 停</button>
   </div>
   <div class="tones" id="tonesC"></div>
+
+  <div class="shell">
+    <div class="core gold">
+      <div class="eyebrow"><i></i>一起播——原音和樂器版疊在一起</div>
+      <p class="dim">兩軌<b>同時從頭開始</b>，拉霸各自控音量。
+        把原音拉小、樂器版拉大，就聽得出來哪個字被你唱歪了。</p>
+      <div class="mix">
+        <label for="mixI">樂器版</label>
+        <input type="range" id="mixI" min="0" max="100" value="85" oninput="setMix()">
+        <span class="val" id="mixIv">85</span>
+        <label for="mixV">原音</label>
+        <input type="range" class="v" id="mixV" min="0" max="100" value="70" oninput="setMix()">
+        <span class="val" id="mixVv">70</span>
+      </div>
+      <div class="row">
+        <button class="btn go" style="flex:1" onclick="playTogether()">
+          ▶ 一起播 <span class="cir">⇉</span></button>
+        <button class="btn sm" onclick="stopAll()">■ 停</button>
+      </div>
+      <div class="row">
+        <button class="btn sm" id="dlmix" onclick="downloadMix()">下載這兩軌合起來的音檔</button>
+        <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
+      </div>
+      <p class="tiny" id="dlnote">合起來的檔案會照上面拉霸的音量比例，存成 WAV。</p>
+    </div>
+  </div>
+
   <div class="row">
     <button class="btn go" style="flex:1" onclick="keepAndNext()">
       留著，再加一題 <span class="cir">＋</span></button>
@@ -781,7 +815,7 @@ function findLyrics(song){
 let AC=null,analyser=null,buf=null,sr=44100,micOK=false,micStream=null;
 let cur=[],curve=null,recording=false,recStart=0,tickTimer=null,voices=[];
 let heldOn=false,nowPlaying=null,headRAF=null;
-let mrec=null,chunks=[],rawURL=null;
+let mrec=null,chunks=[],rawURL=null,rawBlob=null;
 let pack=[],qIdx=0,draft=null,mode=null;   // mode: "make" | "guess"
 let fromName="";
 
@@ -922,17 +956,20 @@ function delQ(i){
 function clearTimer(){ if(tickTimer){clearInterval(tickTimer);tickTimer=null;} }
 function rawClear(){
   if(rawURL){ try{URL.revokeObjectURL(rawURL);}catch(e){} rawURL=null; }
+  rawBlob=null; rawBuf=null; rawBufFor=null;   // 解碼快取也要丟，不然會混到上一題的原音
 }
 function rawStart(){
   chunks=[];
   try{
     mrec=new MediaRecorder(micStream);
     mrec.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+    const mime=mrec.mimeType||"audio/webm";
     mrec.onstop=()=>{
       if(!chunks.length) return;
       rawClear();
-      rawURL=URL.createObjectURL(new Blob(chunks,{type:mrec.mimeType||"audio/webm"}));
-      if(draft) draft.raw=rawURL;
+      rawBlob=new Blob(chunks,{type:mime});
+      rawURL=URL.createObjectURL(rawBlob);
+      if(draft){ draft.raw=rawURL; draft.rawBlob=rawBlob; }
     };
     mrec.start();
   }catch(e){ mrec=null; }
@@ -951,7 +988,7 @@ async function toRecord(){
   if(!w){ alert("先寫要讓對方猜的字。"); $("mkWord").focus(); return; }
   if(!await initAudio()) return;
   stopAll(); clearTimer(); rawClear();
-  draft={target:w,song:$("mkSong").value.trim(),curve:null,raw:null};
+  draft={target:w,song:$("mkSong").value.trim(),curve:null,raw:null,rawBlob:null};
   $("rechead").innerHTML='謎底是「<span class="gold">'+esc(w)+'</span>」';
   show("s-rec");
   cur=[]; recording=true; recStart=performance.now();
@@ -980,6 +1017,8 @@ function stopRecord(){
   draft.curve=curve;
   rawStop();
   $("checkhead").innerHTML='第 '+(pack.length+1)+' 題：「<span class="gold">'+esc(draft.target)+'</span>」';
+  ensureMix();   // 先接好混音，之後不管單獨播還是一起播，拉霸的音量都一致
+  $("dlnote").textContent="合起來的檔案會照上面拉霸的音量比例，存成 WAV。";
   show("s-check");
   setTimeout(()=>drawRoll("cvV",curve,{span:span()}),70);
 }
@@ -991,7 +1030,7 @@ function restartRecord(){
   clearTimer();
   try{ if(mrec&&mrec.state!=="inactive"){ mrec.onstop=null; mrec.stop(); } }catch(e){}
   mrec=null; chunks=[]; rawClear();
-  if(draft) draft.raw=null;
+  if(draft){ draft.raw=null; draft.rawBlob=null; }
   cur=[]; curve=null;
   $("recmeter").style.width="0%";
   setTimeout(toRecord,150);   // 等麥克風那邊收乾淨再開下一輪
@@ -1370,15 +1409,37 @@ function thud(){
 }
 
 /* ============ 播放 ============ */
-function makeVoice(){
+/* 把樂器版排進「任何一個」AudioContext。
+   線上播放和離線輸出檔案共用這一套，所以下載下來的檔案
+   聽起來會跟你剛剛在畫面上聽到的一模一樣。 */
+function scheduleSynth(ctx,dest,fromT,at,src){
+  const c=src||curve;
+  if(!c||!c.length) return null;
+  const sl=[]; for(const p of c) if(p.t>=fromT) sl.push({t:p.t-fromT,m:p.m,v:p.v});
+  if(sl.length<2) return null;
   const T=TONES[tone], v={};
-  v.gain=AC.createGain(); v.gain.gain.value=0;
-  v.osc=AC.createOscillator(); v.osc.type=T.type;
-  v.osc2=AC.createOscillator(); v.osc2.type=T.type; v.osc2.detune.value=T.det;
-  v.filt=AC.createBiquadFilter(); v.filt.type="lowpass"; v.filt.Q.value=T.q;
+  v.gain=ctx.createGain(); v.gain.gain.value=0;
+  v.osc=ctx.createOscillator(); v.osc.type=T.type;
+  v.osc2=ctx.createOscillator(); v.osc2.type=T.type; v.osc2.detune.value=T.det;
+  v.filt=ctx.createBiquadFilter(); v.filt.type="lowpass"; v.filt.Q.value=T.q;
   v.osc.connect(v.filt); v.osc2.connect(v.filt); v.filt.connect(v.gain);
-  v.gain.connect(AC.destination);
-  v.osc.start(); v.osc2.start(); voices.push(v); return v;
+  v.gain.connect(dest);
+  let last=220;
+  v.osc.frequency.setValueAtTime(last,at); v.osc2.frequency.setValueAtTime(last,at);
+  v.gain.gain.setValueAtTime(0,at); v.filt.frequency.setValueAtTime(T.f0+200,at);
+  for(const p of sl){
+    const tt=at+p.t;
+    if(p.m!==null) last=m2f(p.m);
+    v.osc.frequency.linearRampToValueAtTime(last,tt);
+    v.osc2.frequency.linearRampToValueAtTime(last,tt);
+    v.gain.gain.linearRampToValueAtTime(p.m!==null?(0.04+T.g*p.v):0,tt);
+    v.filt.frequency.linearRampToValueAtTime(T.f0+p.v*p.v*T.fs,tt);
+  }
+  v.end=at+sl[sl.length-1].t+0.1;
+  v.gain.gain.linearRampToValueAtTime(0,v.end);
+  v.osc.start(at); v.osc2.start(at);
+  v.osc.stop(v.end+0.1); v.osc2.stop(v.end+0.1);
+  return v;
 }
 function stopSynth(){
   if(!AC){voices=[];nowPlaying=null;return;}
@@ -1394,35 +1455,137 @@ function stopSynth(){
 }
 function stopAll(){
   stopSynth();
+  if(mixSrc){ try{ mixSrc.s.stop(); }catch(e){} try{ mixSrc.g.disconnect(); }catch(e){} mixSrc=null; }
   if(window.__raw){ try{window.__raw.pause();}catch(e){} }
 }
-function playFrom(t){
+function playFrom(t,at){
   ensureAC();
   if(!curve||!curve.length||!AC) return false;
-  const sl=[]; for(const p of curve) if(p.t>=t) sl.push({t:p.t-t,m:p.m,v:p.v});
-  if(sl.length<2) return false;
   stopSynth();
-  const T=TONES[tone];
-  const v=makeVoice(), t0=AC.currentTime+0.06;
-  let last=220;
-  v.osc.frequency.setValueAtTime(last,t0); v.osc2.frequency.setValueAtTime(last,t0);
-  v.gain.gain.setValueAtTime(0,t0); v.filt.frequency.setValueAtTime(T.f0+200,t0);
-  for(const p of sl){
-    const tt=t0+p.t;
-    if(p.m!==null) last=m2f(p.m);
-    v.osc.frequency.linearRampToValueAtTime(last,tt);
-    v.osc2.frequency.linearRampToValueAtTime(last,tt);
-    v.gain.gain.linearRampToValueAtTime(p.m!==null?(0.04+T.g*p.v):0,tt);
-    v.filt.frequency.linearRampToValueAtTime(T.f0+p.v*p.v*T.fs,tt);
-  }
-  const end=t0+sl[sl.length-1].t+0.1;
-  v.gain.gain.linearRampToValueAtTime(0,end);
-  v.osc.stop(end+0.1); v.osc2.stop(end+0.1);
-  nowPlaying={from:t,at:AC.currentTime};
+  const t0=(at==null)?AC.currentTime+0.06:at;
+  const v=scheduleSynth(AC,instrGain||AC.destination,t,t0);
+  if(!v) return false;
+  voices.push(v);
+  nowPlaying={from:t,at:t0};
   if(!headRAF) headRAF=requestAnimationFrame(headLoop);
   return true;
 }
 function playAll(){ playFrom(0); }
+
+/* ============ 混音台：原音 × 樂器版 ============
+   ⚠ 原音只存在出題的人自己電腦上（檔案太大塞不進連結），
+   所以這一區只出現在「試聽」畫面。朋友那邊沒有原音可混。 */
+let instrGain=null, mixSrc=null, rawBuf=null, rawBufFor=null;
+function ensureMix(){
+  ensureAC();
+  if(!instrGain){ instrGain=AC.createGain(); instrGain.connect(AC.destination); }
+  setMix();
+  return instrGain;
+}
+function mixVals(){
+  const gi=$("mixI"), gv=$("mixV");
+  return { i:(gi?+gi.value:85)/100, v:(gv?+gv.value:70)/100 };
+}
+function setMix(){
+  const m=mixVals();
+  if($("mixIv")) $("mixIv").textContent=Math.round(m.i*100);
+  if($("mixVv")) $("mixVv").textContent=Math.round(m.v*100);
+  if(instrGain) instrGain.gain.value=m.i;
+  if(mixSrc&&mixSrc.g) mixSrc.g.gain.value=m.v;
+}
+function rawSource(){ return (draft&&draft.raw)?draft.raw:rawURL; }
+/* 原音解碼一次就快取起來——用 AudioBufferSource 播才能跟樂器版精準對齊，
+   用 <audio> 元素播會差個幾十毫秒，疊在一起會聽起來像回音。 */
+async function ensureRawBuf(){
+  const u=rawSource();
+  if(!u) return null;
+  if(rawBuf&&rawBufFor===u) return rawBuf;
+  try{
+    ensureAC();
+    const ab=await (await fetch(u)).arrayBuffer();
+    rawBuf=await AC.decodeAudioData(ab);
+    rawBufFor=u;
+    return rawBuf;
+  }catch(e){ return null; }
+}
+async function playTogether(){
+  ensureMix(); stopAll();
+  const buf=await ensureRawBuf();
+  ensureMix();
+  const t0=AC.currentTime+0.12;      // 留一點時間讓兩軌都排好，才會真的同步
+  playFrom(0,t0);
+  if(buf){
+    const s=AC.createBufferSource(); s.buffer=buf;
+    const g=AC.createGain(); g.gain.value=mixVals().v;
+    s.connect(g); g.connect(AC.destination);
+    s.start(t0);
+    mixSrc={s,g};
+  }
+}
+
+/* ---- 下載 ---- */
+function dlBlob(blob,name){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>{ try{URL.revokeObjectURL(a.href);}catch(e){} },4000);
+}
+function safeName(s){ return String(s||"哼歌猜字").replace(/[\\\/:*?"<>|]/g,""); }
+function downloadRaw(){
+  const b=(draft&&draft.rawBlob)?draft.rawBlob:rawBlob;
+  if(!b){ alert("這一題沒有錄到原音。"); return; }
+  const ext=(b.type&&b.type.indexOf("ogg")>=0)?"ogg":"webm";
+  dlBlob(b,"哼歌猜字_原音_"+safeName(draft&&draft.target)+"."+ext);
+}
+/* 把兩軌照現在拉霸的比例算成一個 WAV 檔 */
+async function downloadMix(){
+  if(!curve||!curve.length){ alert("還沒有錄音。"); return; }
+  const btn=$("dlmix"), note=$("dlnote");
+  btn.disabled=true; btn.textContent="算檔案中…";
+  try{
+    const m=mixVals();
+    const buf=await ensureRawBuf();
+    const rate=(AC&&AC.sampleRate)||44100;
+    const dur=Math.max(span()+0.35, buf?buf.duration+0.1:0);
+    const octx=new OfflineAudioContext(buf?Math.min(2,buf.numberOfChannels):1,
+                                       Math.ceil(dur*rate), rate);
+    const ig=octx.createGain(); ig.gain.value=m.i; ig.connect(octx.destination);
+    scheduleSynth(octx,ig,0,0);
+    if(buf){
+      const s=octx.createBufferSource(); s.buffer=buf;
+      const g=octx.createGain(); g.gain.value=m.v;
+      s.connect(g); g.connect(octx.destination); s.start(0);
+    }
+    const out=await octx.startRendering();
+    dlBlob(bufferToWav(out),"哼歌猜字_合起來_"+safeName(draft&&draft.target)+".wav");
+    note.textContent=buf?"存好了（樂器版＋原音）。":"存好了。這題沒錄到原音，所以只有樂器版。";
+  }catch(e){
+    note.textContent="做檔案失敗："+(e&&e.message||e);
+  }
+  btn.disabled=false; btn.textContent="下載這兩軌合起來的音檔";
+}
+/* AudioBuffer → 16bit PCM WAV */
+function bufferToWav(ab){
+  const ch=ab.numberOfChannels, len=ab.length*ch*2+44;
+  const b=new ArrayBuffer(len), view=new DataView(b);
+  let pos=0;
+  const u16=d=>{view.setUint16(pos,d,true);pos+=2;};
+  const u32=d=>{view.setUint32(pos,d,true);pos+=4;};
+  u32(0x46464952); u32(len-8); u32(0x45564157);
+  u32(0x20746d66); u32(16); u16(1); u16(ch);
+  u32(ab.sampleRate); u32(ab.sampleRate*2*ch); u16(ch*2); u16(16);
+  u32(0x61746164); u32(len-pos-4);
+  const data=[]; for(let i=0;i<ch;i++) data.push(ab.getChannelData(i));
+  let off=0;
+  while(pos<len){
+    for(let i=0;i<ch;i++){
+      let s=Math.max(-1,Math.min(1,data[i][off]));
+      view.setInt16(pos,s<0?s*0x8000:s*0x7FFF,true); pos+=2;
+    }
+    off++;
+  }
+  return new Blob([view],{type:"audio/wav"});
+}
 function headLoop(){
   if(!nowPlaying){headRAF=null; redraw(null); return;}
   const at=nowPlaying.from+(AC.currentTime-nowPlaying.at);
@@ -1538,7 +1701,7 @@ $("gword").addEventListener("keydown",e=>{ if(e.key==="Enter") submitGuess(); })
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0803j";
+const BUILD="0803k";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
