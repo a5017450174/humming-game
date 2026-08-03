@@ -212,6 +212,17 @@ input[readonly]{font-size:13px;color:var(--dim)}
 .mix input[type=range]{width:100%;accent-color:var(--gold);height:22px}
 .mix input[type=range].v{accent-color:var(--teal)}
 
+/* ---------- 即時房間 ---------- */
+.chat{max-height:190px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:4px 2px}
+.chat .msg{display:flex;gap:9px;align-items:baseline;font-size:14.5px;
+  padding:7px 11px;border-radius:12px;background:rgba(0,0,0,.22)}
+.chat .msg b{color:var(--dim);font-size:13px;flex:none;min-width:52px}
+.chat .msg span{color:#cfc6b7;word-break:break-all}
+.chat .msg.hit{background:rgba(147,207,114,.13);border:1px solid rgba(147,207,114,.28)}
+.chat .msg.hit .ok{color:var(--green);font-weight:700}
+.chat:empty::after{content:"還沒有人出手…";color:var(--faint);font-size:13px}
+.roll.nodrag canvas{pointer-events:none}
+
 /* ---------- 音色 ---------- */
 .tones{display:flex;gap:6px;padding:5px;border-radius:999px;
   background:rgba(0,0,0,.28);border:1px solid var(--hair);flex-wrap:wrap}
@@ -469,6 +480,11 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <button class="btn big" onclick="restartRecord()">
       唱壞了，重來 <span class="cir">↻</span></button>
   </div>
+  <div class="row" id="liveDoneBtns" style="display:none">
+    <button class="btn go big" style="flex:1" onclick="liveConfirm()">
+      就這樣 <span class="cir">→</span></button>
+    <button class="btn big" onclick="liveRedo()">重唱一次 <span class="cir">↻</span></button>
+  </div>
   <p class="tiny" id="recnote" style="text-align:center;display:none">
     「重來」＝這一次不要了，回到「準備好就唱」重新等你開口。</p>
 </div>
@@ -696,11 +712,13 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <!-- 搶答 -->
   <div id="rmLive" style="display:none">
     <div class="stack tight">
-      <div class="eyebrow"><i class="dot rec"></i>還有 <b id="livetime">60</b> 秒</div>
+      <div class="eyebrow" id="livestate"><i class="dot rec"></i>正在唱…</div>
+      <div id="livetimebox" style="display:none"></div>
+      <p class="tiny" id="liveredo" style="display:none;color:var(--rose)">他重唱了，這是新的一次。</p>
     </div>
     <div class="roll" id="wrapLive"><canvas id="cvLive"></canvas>
-      <div class="lbl">壓住畫面＝從那裡開始聽</div></div>
-    <div class="row" style="align-items:center">
+      <div class="lbl" id="livelbl">跟著他一起長出來</div></div>
+    <div class="row" style="align-items:center" id="livereplay">
       <button class="btn" onclick="playAll()">▶ 從頭聽</button>
       <button class="btn sm" onclick="stopAll()">■ 停</button>
     </div>
@@ -744,6 +762,10 @@ input[readonly]{font-size:13px;color:var(--dim)}
         <div class="eyebrow"><i></i>目前分數</div>
         <div id="revboard"></div>
       </div>
+    </div>
+    <div class="row" id="revdl" style="display:none">
+      <button class="btn sm" onclick="downloadMix()">下載這次的音檔（樂器＋原音）</button>
+      <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
     </div>
     <button class="btn go big wide" id="revnext" onclick="startRound()">
       下一輪 <span class="cir">→</span></button>
@@ -1176,6 +1198,7 @@ const ARM_RMS=0.02;   // 要多大聲才算「開口了」
 const ARM_HOLD=3;     // 連續幾格（約 50 毫秒）才算數，免得咳嗽、滑鼠聲就觸發
 function armRecord(){
   recording=false; armed=true; armHits=0;
+  $("liveDoneBtns").style.display="none";
   $("recstate").textContent="隨時可以開始";
   $("recdot").className="dot wait";
   $("armbox").style.display="";
@@ -1198,9 +1221,10 @@ function armLoop(){
   if(armHits>=ARM_HOLD){ beginRecording(); return; }
   requestAnimationFrame(armLoop);
 }
-function beginRecording(){
+async function beginRecording(){
   if(recording) return;
   armed=false;
+  if(mode==="room"){ await liveBegin(); }   // 房間模式：開唱＝上架＋開始串流
   $("recstate").textContent="錄音中";
   $("recdot").className="dot rec";
   $("armbox").style.display="none";
@@ -1237,6 +1261,16 @@ function stopRecord(){
   curve=cur.slice();
   draft.curve=curve;
   rawStop();
+  if(mode==="room"){
+    /* 直播模式：唱完不進試聽（Alvis 要的「唱完直接兩顆鍵」） */
+    liveEnd();
+    $("recstate").textContent="唱完了，等你決定";
+    $("recdot").className="dot wait";
+    $("recbtns").style.display="none";
+    $("recnote").style.display="none";
+    $("liveDoneBtns").style.display="";
+    return;
+  }
   $("checkhead").innerHTML='第 '+(pack.length+1)+' 題：「<span class="gold">'+esc(draft.target)+'</span>」';
   const inRoom=(mode==="room");
   $("checkdone").innerHTML=inRoom?'送出給大家 <span class="cir">→</span>':'留著，做連結 <span class="cir">→</span>';
@@ -2187,11 +2221,16 @@ function renderRoom(){
     const p=(room.players||{})[performerId()]||{};
     $("waitWho").textContent=(p.name||"有人")+" 正在想歌…";
   }
-  else if(st==="guess"){
+  else if(st==="live"||st==="guess"){
+    if(amPerformer()){
+      /* 出題的人自己在錄音畫面上，不要被拉回房間畫面 */
+      if(st==="guess"&&!$("s-room").classList.contains("on")){ show("s-room"); }
+      else if(st==="live"){ return; }
+    }
     if(!$("s-room").classList.contains("on")) show("s-room");
     $("rmLive").style.display="";
     setupLive();
-    maybeEndRound();   // 房裡任何人收到新的搶答，都順手檢查這輪是不是該收了
+    if(st==="guess") maybeEndRound();
   }
   else if(st==="reveal"){
     if(!$("s-room").classList.contains("on")) show("s-room");
@@ -2211,6 +2250,8 @@ async function startRound(){
   const next=order[(r-1)%order.length];
   await Net.set("guesses",null);
   await Net.set("puzzle",null);
+  await Net.set("live",null);
+  await Net.set("deadline",null);
   await Net.set("round",r);
   await Net.set("performer",next.id);
   await Net.set("state","compose");
@@ -2233,29 +2274,48 @@ function packCurveBytes(c){ return packCurve(c); }
 /* ---- 搶答畫面 ---- */
 let liveReady=false;
 async function setupLive(){
-  const pz=room.puzzle;
-  if(!pz){ return; }
-  if(!liveReady||liveReady!==pz.packet){
-    liveReady=pz.packet;
-    try{
-      curve=unpackCurve(await ungz(fromB64(pz.packet)));
-    }catch(e){ curve=null; }
-    ensureAC();
-    $("liveask").textContent="謎底是哪"+(CNUM[pz.len]||pz.len)+"個字？";
-    $("liveword").value="";
-    $("liveword").maxLength=Math.max(4,pz.len+2);
-    setTimeout(()=>drawRoll("cvLive",curve,{span:span()}),60);
-    wireLiveWave();
+  const pz=room.puzzle; if(!pz) return;
+  const st=room.state;
+  const lv=room.live||{};
+
+  /* 換了一次 take＝他重唱了：整條清掉重來 */
+  if(st==="live"&&lv.take&&lv.take!==lvTake){
+    liveReset(lv.take);
+    $("liveredo").style.display=lv.take>1?"":"none";
   }
+  if(st==="live"){
+    if(!amPerformer()) liveFeed(lv.f);
+    if(lv.done) liveAudioFinish();
+  }
+  /* 確認之後：整條資料已經收齊，改用完整曲線（可以重播、可以壓住重聽） */
+  if(st==="guess"&&lvCurve.length){ curve=lvCurve; }
+
+  $("liveask").textContent="謎底是哪"+(CNUM[pz.len]||pz.len)+"個字？";
+  const inp=$("liveword");
+  if(inp.maxLength!==Math.max(4,pz.len+2)) inp.maxLength=Math.max(4,pz.len+2);
+
+  /* 直播中不能倒帶（Alvis 選的：就是直播），確認後才開放重播 */
+  const canReplay=(st==="guess");
+  $("livereplay").style.display=canReplay?"":"none";
+  $("wrapLive").classList.toggle("nodrag",!canReplay);
+  if(canReplay) wireLiveWave();
+
   const me=amPerformer();
   $("livemine").style.display=me?"":"none";
   $("liveinput").style.display=me?"none":"";
-  if(me){
-    const pz2=room.puzzle||{};
-    $("livemineword").textContent=pz2.target||"";
+  if(me) $("livemineword").textContent=pz.target||"";
+
+  if(st==="live"){
+    $("livestate").innerHTML=lv.done
+      ? '<i class="dot wait"></i>他在決定要不要重唱…'
+      : '<i class="dot rec"></i>正在唱…　<b>現在就可以猜</b>';
+    $("livetimebox").style.display="none";
+  }else{
+    $("livestate").innerHTML='<i class="dot rec"></i>還有 <b id="livetime">60</b> 秒';
+    $("livetimebox").style.display="";
+    startCountdown();
   }
   renderGuesses();
-  startCountdown();
 }
 function startCountdown(){
   clearRoundTimer();
@@ -2318,6 +2378,7 @@ function maybeEndRound(){
   const others=playerList().filter(p=>p.id!==performerId()).length;
   const hits=Object.values(room.guesses||{}).filter(x=>x.ok).length;
   const timeUp=(room.deadline||0)>0&&Net.now()>=room.deadline;
+  /* 直播階段沒有倒數，他要唱多久都行 */
   if((others>0&&hits>=others)||timeUp) Net.set("state","reveal");
 }
 
@@ -2339,6 +2400,8 @@ function renderReveal(){
     '<div class="scoreline"><span class="n">'+(i+1)+'</span>'+
     '<span class="a">'+esc(p.name)+'</span>'+
     '<span class="r">'+(p.score||0)+' 分</span></div>').join("");
+  /* 下載＝最後那一次唱的（Alvis 要求以最終版為主） */
+  $("revdl").style.display=(pz.by===myId&&curve&&curve.length)?"":"none";
   $("revnext").style.display=isHost?"":"none";
   $("revwait").style.display=isHost?"none":"";
 }
@@ -2365,11 +2428,182 @@ function endLiveHold(){
   stopAll(); drawRoll("cvLive",curve,{span:span()});
 }
 
+
+/* ================= 直播：一邊唱，大家一邊聽一邊看 =================
+   傳出去的只有「音高＋音量」，一秒約 120 個位元組——
+   ⚠ 你的原始人聲永遠不會傳給任何人，不然歌詞就漏了，遊戲就毀了。
+
+   流程（房間的 state）：
+     compose  出題的人在填字、還沒開唱
+     live     他正在唱：大家同步聽到＋看到線條長出來，而且「已經可以搶答」
+     guess    他按了「就這樣」：剩下的人有 60 秒
+     reveal   揭曉
+
+   為什麼要緩衝兩秒：網路不會每 0.5 秒都準時到，先存兩秒再播，
+   中間卡一下也不會斷音。Alvis 說晚兩秒沒差，剛好夠用。 */
+const LIVE_FPS=62;        // 跟連結版同一個取樣率
+const LIVE_CHUNK=0.5;     // 每 0.5 秒送一包
+const LIVE_BUFFER=2.0;    // 聽的人延遲兩秒開始播
+
+/* ---- 打包：把某一段時間的音高壓成位元組 ---- */
+function packChunk(c,fromIdx,toIdx){
+  const n=Math.max(0,toIdx-fromIdx);
+  const out=new Uint8Array(n*2);
+  let k=0;
+  for(let i=0;i<n;i++){
+    const t=(fromIdx+i)/LIVE_FPS;
+    while(k<c.length-1&&c[k+1].t<=t) k++;
+    const q=c[k];
+    out[i]  =(q&&q.m!==null)?Math.max(1,Math.min(255,Math.round((q.m-36)*4))):0;
+    out[n+i]=q?Math.max(0,Math.min(255,Math.round(q.v*255))):0;
+  }
+  return out;
+}
+function unpackChunk(u8,fromIdx){
+  const n=u8.length>>1, a=[];
+  for(let i=0;i<n;i++){
+    a.push({t:(fromIdx+i)/LIVE_FPS, m:u8[i]?36+u8[i]/4:null, v:u8[n+i]/255});
+  }
+  return a;
+}
+
+/* ================= 出題的人：一邊唱一邊送 ================= */
+let liveTake=0, liveSent=0, liveTimer=null;
+
+async function liveBegin(){
+  /* 開唱前先把題目本體寫上去（謎底、歌名、字數），
+     因為 Alvis 選了「唱的當下就能猜」，猜的人需要這些才能判斷對錯。 */
+  liveTake=(liveTake||0)+1; liveSent=0;
+  await Net.set("live",null);
+  await Net.set("puzzle",{
+    target:draft.target, song:draft.song||"", by:myId, len:[...draft.target].length
+  });
+  await Net.set("live/take",liveTake);
+  await Net.set("live/done",false);
+  await Net.set("state","live");
+  clearInterval(liveTimer);
+  liveTimer=setInterval(livePush,LIVE_CHUNK*1000);
+}
+function livePush(){
+  if(!Net||!cur.length) return;
+  /* +1 是因為「第 n 格」也算已經唱出來了。少了它每包都會漏掉最後一格，
+     整首下來會缺好幾格，收尾那一格更是永遠送不出去。 */
+  const nowIdx=Math.floor(cur[cur.length-1].t*LIVE_FPS)+1;
+  if(nowIdx<=liveSent) return;
+  const bytes=packChunk(cur,liveSent,nowIdx);
+  const from=liveSent;
+  liveSent=nowIdx;
+  Net.push("live/f",{i:from,d:toB64(bytes)});
+}
+async function liveEnd(){
+  clearInterval(liveTimer); liveTimer=null;
+  livePush();                       // 最後一段補送
+  await Net.set("live/done",true);
+}
+/* 重唱：換一個 take 編號，聽的人那邊會整條清掉重來 */
+async function liveRedo(){
+  $("liveDoneBtns").style.display="none";
+  await Net.set("live/f",null);
+  await Net.set("live/done",false);
+  armRecord();
+}
+/* 就這樣：定案，剩下的人開始倒數 */
+async function liveConfirm(){
+  $("liveDoneBtns").style.display="none";
+  await Net.set("deadline",Net.now()+GUESS_SECS*1000);
+  await Net.set("state","guess");
+}
+
+/* ================= 聽的人：邊收邊播 ================= */
+let LV=null, lvTake=-1, lvSeen={}, lvCurve=[], lvDrawRAF=null;
+
+function liveReset(take){
+  lvTake=take; lvSeen={}; lvCurve=[];
+  liveAudioStop();
+  curve=null;
+  drawRoll("cvLive",[{t:0,m:null,v:0}],{span:1});
+}
+function liveFeed(frames){
+  const list=Object.keys(frames||{}).sort();
+  let added=[];
+  for(const k of list){
+    if(lvSeen[k]) continue;
+    lvSeen[k]=1;
+    const x=frames[k];
+    try{ added=added.concat(unpackChunk(fromB64(x.d),x.i)); }catch(e){}
+  }
+  if(!added.length) return;
+  added.sort((a,b)=>a.t-b.t);
+  lvCurve=lvCurve.concat(added).sort((a,b)=>a.t-b.t);
+  curve=lvCurve;
+  liveAudioAppend(added);
+  if(!lvDrawRAF) lvDrawRAF=requestAnimationFrame(()=>{
+    lvDrawRAF=null;
+    drawRoll("cvLive",lvCurve,{span:Math.max(2,lvCurve[lvCurve.length-1].t+0.5)});
+  });
+}
+/* 串流播放：開一組振盪器，資料到了就往後面接排程。
+   ⚠ 不能每收到一包就重開一次，那樣每 0.5 秒會「喀」一聲。 */
+function liveAudioAppend(frames){
+  if(!frames.length) return;
+  ensureAC();
+  const T=TONES[tone];
+  if(!LV){
+    const g=AC.createGain(); g.gain.value=0;
+    const o=AC.createOscillator(); o.type=T.type;
+    const o2=AC.createOscillator(); o2.type=T.type; o2.detune.value=T.det;
+    const fl=AC.createBiquadFilter(); fl.type="lowpass"; fl.Q.value=T.q;
+    o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(AC.destination);
+    o.start(); o2.start();
+    /* 讓「收到的第一格」在兩秒後才響，中途加入的人也會自動對齊 */
+    LV={osc:o,osc2:o2,filt:fl,gain:g,last:220,
+        t0:AC.currentTime+LIVE_BUFFER-frames[0].t, lastT:frames[0].t};
+    try{
+      g.gain.setValueAtTime(0,Math.max(AC.currentTime,LV.t0+frames[0].t-0.02));
+      fl.frequency.setValueAtTime(T.f0+200,Math.max(AC.currentTime,LV.t0+frames[0].t-0.02));
+    }catch(e){}
+  }
+  for(const p of frames){
+    const tt=LV.t0+p.t;
+    if(tt<AC.currentTime+0.005) continue;   // 已經來不及了就跳過
+    if(p.m!==null) LV.last=m2f(p.m);
+    try{
+      LV.osc.frequency.linearRampToValueAtTime(LV.last,tt);
+      LV.osc2.frequency.linearRampToValueAtTime(LV.last,tt);
+      LV.gain.gain.linearRampToValueAtTime(p.m!==null?(0.04+T.g*p.v):0,tt);
+      LV.filt.frequency.linearRampToValueAtTime(T.f0+p.v*p.v*T.fs,tt);
+    }catch(e){}
+    LV.lastT=p.t;
+  }
+}
+function liveAudioFinish(){
+  if(!LV) return;
+  try{
+    const end=LV.t0+LV.lastT+0.12;
+    LV.gain.gain.linearRampToValueAtTime(0,end);
+    LV.osc.stop(end+0.1); LV.osc2.stop(end+0.1);
+  }catch(e){}
+  const dead=LV; LV=null;
+  setTimeout(()=>{ try{dead.gain.disconnect();}catch(e){} },1200);
+}
+function liveAudioStop(){
+  if(!LV) return;
+  try{
+    const t=AC?AC.currentTime:0;
+    LV.gain.gain.cancelScheduledValues(t);
+    LV.gain.gain.setValueAtTime(LV.gain.gain.value,t);
+    LV.gain.gain.linearRampToValueAtTime(0,t+0.03);
+    LV.osc.stop(t+0.08); LV.osc2.stop(t+0.08);
+  }catch(e){}
+  const dead=LV; LV=null;
+  setTimeout(()=>{ try{dead.gain.disconnect();}catch(e){} },400);
+}
+
 /* ============ 開頁面 ============ */
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0804b";
+const BUILD="0804c";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
