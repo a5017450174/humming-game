@@ -353,6 +353,17 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
   </div>
 
+  <div class="shell">
+    <div class="core teal">
+      <div class="eyebrow t"><i></i>大家同時在線上？</div>
+      <p class="dim">開一個房間，輪流出題、一起搶答，猜中的越早分數越高。</p>
+      <div class="row">
+        <button class="btn go" style="flex:1" onclick="createRoom()">開房間 <span class="cir">＋</span></button>
+        <button class="btn" onclick="joinRoom(prompt('房號（四位數字）'))">加入房間</button>
+      </div>
+    </div>
+  </div>
+
   <button class="btn go big wide" onclick="startMaking()">
     開始出題 <span class="cir">→</span></button>
   <p class="credit">哼歌猜字 · 版本 <b id="ver"></b> · 只存歌名不存歌詞<br>
@@ -506,7 +517,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <div class="row">
     <button class="btn go" style="flex:1" onclick="keepAndNext()">
       留著，再加一題 <span class="cir">＋</span></button>
-    <button class="btn go" style="flex:1" onclick="keepAndFinish()">
+    <button class="btn go" style="flex:1" id="checkdone" onclick="keepAndFinish()">
       留著，做連結 <span class="cir">→</span></button>
   </div>
   <button class="btn sm" onclick="reRecord()" style="align-self:flex-start">這題重錄</button>
@@ -648,8 +659,118 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
 </div>
 
+<div id="s-room" class="screen">
+  <div class="stack tight">
+    <div class="eyebrow t"><i></i>房號 <b id="roomcode" style="letter-spacing:.2em">----</b>
+      　<span id="roomcount">1</span> 人</div>
+  </div>
+
+  <div class="shell">
+    <div class="core pad-s" id="roomplayers"></div>
+  </div>
+
+  <!-- 等開始 -->
+  <div id="rmLobby">
+    <div class="shell">
+      <div class="core teal">
+        <div class="ready">把房號給朋友</div>
+        <p class="dim" style="text-align:center">他們開同一個網址，按「加入房間」打房號就進得來。</p>
+        <p class="tiny" id="lobbyHint" style="text-align:center"></p>
+        <button class="btn go wide" id="hostStart" onclick="startRound()">
+          大家到齊了，開始 <span class="cir">→</span></button>
+        <p class="dim" id="waitHost" style="text-align:center;display:none">等房主開始…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 別人在錄 -->
+  <div id="rmWait" style="display:none">
+    <div class="shell">
+      <div class="core">
+        <div class="ready" id="waitWho">有人正在想歌…</div>
+        <p class="dim" style="text-align:center">他唱完你就會聽到，先想想等一下要怎麼猜。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 搶答 -->
+  <div id="rmLive" style="display:none">
+    <div class="stack tight">
+      <div class="eyebrow"><i class="dot rec"></i>還有 <b id="livetime">60</b> 秒</div>
+    </div>
+    <div class="roll" id="wrapLive"><canvas id="cvLive"></canvas>
+      <div class="lbl">壓住畫面＝從那裡開始聽</div></div>
+    <div class="row" style="align-items:center">
+      <button class="btn" onclick="playAll()">▶ 從頭聽</button>
+      <button class="btn sm" onclick="stopAll()">■ 停</button>
+    </div>
+    <div class="tones" id="tonesL"></div>
+
+    <div class="shell">
+      <div class="core pad-s">
+        <div id="chat" class="chat"></div>
+        <div id="liveinput" class="inrow" style="margin-top:10px">
+          <input type="text" id="liveword" autocomplete="off" placeholder="打你猜的字，Enter 送出">
+          <button class="btn go" onclick="sendGuess()">送出</button>
+        </div>
+        <p class="dim" id="livedone" style="display:none;margin-top:10px">
+          你猜中了！等其他人或時間到。</p>
+        <div id="livemine" style="display:none;margin-top:10px">
+          <p class="dim">你是出題的人。謎底是「<b class="gold" id="livemineword"></b>」，
+            不要說出來，看他們猜。</p>
+        </div>
+      </div>
+    </div>
+    <p class="tiny" id="liveask" style="text-align:center"></p>
+  </div>
+
+  <!-- 揭曉 -->
+  <div id="rmReveal" style="display:none">
+    <div class="shell">
+      <div class="core gold">
+        <div class="eyebrow"><i></i>這一輪的答案</div>
+        <div class="word" id="revword"></div>
+        <div class="kv" id="revsongrow"><span>他唱的歌</span><b id="revsong"></b></div>
+      </div>
+    </div>
+    <div class="shell">
+      <div class="core">
+        <div class="eyebrow t"><i></i>誰猜中了</div>
+        <div id="revhits"></div>
+      </div>
+    </div>
+    <div class="shell">
+      <div class="core">
+        <div class="eyebrow"><i></i>目前分數</div>
+        <div id="revboard"></div>
+      </div>
+    </div>
+    <button class="btn go big wide" id="revnext" onclick="startRound()">
+      下一輪 <span class="cir">→</span></button>
+    <p class="dim" id="revwait" style="text-align:center;display:none">等房主開下一輪…</p>
+  </div>
+
+  <button class="btn sm" onclick="leaveRoom()" style="align-self:flex-start">離開房間</button>
+</div>
+
 <div id="fx" aria-hidden="true"><canvas id="fxcv"></canvas><div id="fxtxt"></div></div>
 
+<script>
+/* Firebase 即時房間的連線設定。
+   ⚠ 這段可以公開，不是密碼——它本來就會出現在每個玩家的瀏覽器裡。
+      真正管安全的是 Firebase 後台的「規則」，不是這幾行。
+   2026-08-03 建立，專案 humming-game-8019f，資料庫在新加坡。 */
+window.FIRE_CFG={
+  apiKey:"AIzaSyAhyaSEEEdiB7EF7s-1zWhFdfradzZqfDI",
+  authDomain:"humming-game-8019f.firebaseapp.com",
+  databaseURL:"https://humming-game-8019f-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"humming-game-8019f",
+  storageBucket:"humming-game-8019f.firebasestorage.app",
+  messagingSenderId:"842585668153",
+  appId:"1:842585668153:web:87b646466950381be0ebe8"
+};
+
+</script>
 <script>
 /* 歌名清單 —— 只有歌名，沒有歌詞。
    程式會自己從這些歌名拆出「字」和「兩個字的詞」來當題目，
@@ -768,7 +889,7 @@ const TONES=[
 const TONE_NAMES=["笛聲","人聲「嗚」","電子音"];
 let tone=0;
 function buildTones(){
-  for(const id of ["tonesC","tonesG"]){
+  for(const id of ["tonesC","tonesG","tonesL"]){
     const box=$(id); if(!box) continue;
     box.innerHTML='<span class="tone" style="color:var(--faint);pointer-events:none">音色</span>'+
       TONE_NAMES.map((n,i)=>'<button class="tone'+(i===tone?" on":"")+'" data-t="'+i+'" '+
@@ -976,7 +1097,7 @@ function toMake(){
   stopAll(); clearTimer();
   $("mkSong").value=""; $("mkWord").value="";
   $("qno").textContent="第 "+(pack.length+1)+" 題";
-  $("mkFinish").style.display=pack.length?"":"none";
+  $("mkFinish").style.display=(mode!=="room"&&pack.length)?"":"none";
   drawTip(); rollInspire(); drawRail(); drawDone();
   show("s-make");
 }
@@ -1117,6 +1238,9 @@ function stopRecord(){
   draft.curve=curve;
   rawStop();
   $("checkhead").innerHTML='第 '+(pack.length+1)+' 題：「<span class="gold">'+esc(draft.target)+'</span>」';
+  const inRoom=(mode==="room");
+  $("checkdone").innerHTML=inRoom?'送出給大家 <span class="cir">→</span>':'留著，做連結 <span class="cir">→</span>';
+  $("checkdone").previousElementSibling.style.display=inRoom?"none":"";
   ensureMix();   // 先接好混音，之後不管單獨播還是一起播，拉霸的音量都一致
   $("dlnote").textContent="合起來的檔案會照上面拉霸的音量比例，存成 WAV。";
   show("s-check");
@@ -1143,7 +1267,11 @@ function keepDraft(){
   return true;
 }
 function keepAndNext(){ stopAll(); if(!keepDraft()) return; toMake(); }
-function keepAndFinish(){ stopAll(); if(!keepDraft()) return; makeLink(); }
+function keepAndFinish(){
+  stopAll();
+  if(mode==="room"){ submitPuzzle(); return; }   // 房間模式：直接送出給房裡的人
+  if(!keepDraft()) return; makeLink();
+}
 function countdown(sec,el,done){
   clearTimer();
   let t=sec; $(el).textContent=t;
@@ -1801,12 +1929,447 @@ addEventListener("resize",()=>{ if(curve) redraw(null); });
 $("mkSong").addEventListener("keydown",e=>{ if(e.key==="Enter") $("mkWord").focus(); });
 $("mkWord").addEventListener("keydown",e=>{ if(e.key==="Enter") toRecord(); });
 $("gword").addEventListener("keydown",e=>{ if(e.key==="Enter") submitGuess(); });
+$("liveword").addEventListener("keydown",e=>{ if(e.key==="Enter") sendGuess(); });
+
+
+/* ================= 即時房間：連線層 =================
+   遊戲邏輯只認下面這幾個動作，不管底下接的是什麼服務：
+     Net.create()            開一個房間，回傳房號
+     Net.join(code)          加入房間
+     Net.watch(path,cb)      這個位置有變動就通知我
+     Net.set(path,value)     寫入
+     Net.push(path,value)    在清單後面加一筆
+     Net.now()               伺服器時間（大家的錶要對齊，不然計時會亂）
+     Net.leave()             離開
+
+   目前有兩種底層：
+     LocalNet    —— 同一台電腦、多開分頁用（BroadcastChannel）。測試用，不用任何帳號。
+     FireNet     —— Firebase 即時資料庫。真的跟遠端朋友玩的時候用。
+   兩邊的行為要一模一樣，這樣測 LocalNet 過了，FireNet 就會過。 */
+
+const NET_MODE_KEY="netMode";     // "local" 或 "fire"
+let Net=null, myId=null, roomCode=null;
+
+function newId(){
+  return "p"+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
+}
+function newRoomCode(){
+  /* 四位數字，好念好打。避開容易聽錯的組合不值得，直接隨機。 */
+  return String(1000+Math.floor(Math.random()*9000));
+}
+
+/* ---- 路徑工具：把 "players/p123/name" 這種路徑套用到一個物件上 ---- */
+function pathGet(obj,path){
+  if(!path) return obj;
+  let o=obj;
+  for(const k of path.split("/")){ if(o==null) return undefined; o=o[k]; }
+  return o;
+}
+function pathSet(obj,path,val){
+  const ks=path.split("/");
+  let o=obj;
+  for(let i=0;i<ks.length-1;i++){
+    if(o[ks[i]]==null||typeof o[ks[i]]!=="object") o[ks[i]]={};
+    o=o[ks[i]];
+  }
+  if(val===null) delete o[ks[ks.length-1]];
+  else o[ks[ks.length-1]]=val;
+}
+
+/* ================= 測試用：同一台電腦多開分頁 ================= */
+function LocalNet(){
+  const KEY=c=>"room_"+c;
+  let ch=null, watchers=[], code=null;
+  const read=()=>{ try{ return JSON.parse(localStorage.getItem(KEY(code))||"{}"); }catch(e){ return {}; } };
+  const write=d=>{ localStorage.setItem(KEY(code),JSON.stringify(d)); };
+  function fire(){
+    const d=read();
+    for(const w of watchers){
+      const v=pathGet(d,w.path);
+      const s=JSON.stringify(v===undefined?null:v);
+      if(s!==w.last){ w.last=s; try{ w.cb(v===undefined?null:v); }catch(e){} }
+    }
+  }
+  function open(c){
+    code=c;
+    if(ch) try{ ch.close(); }catch(e){}
+    ch=new BroadcastChannel("hum_"+c);
+    ch.onmessage=()=>fire();
+    return c;
+  }
+  return {
+    kind:"local",
+    create(){ const c=newRoomCode(); open(c); write({createdAt:Date.now()}); return Promise.resolve(c); },
+    join(c){ open(c); const d=read();
+      if(!d.createdAt) return Promise.reject(new Error("找不到這個房間"));
+      return Promise.resolve(c); },
+    watch(path,cb){
+      const w={path,cb,last:" "};
+      watchers.push(w);
+      const v=pathGet(read(),path);
+      w.last=JSON.stringify(v===undefined?null:v);
+      try{ cb(v===undefined?null:v); }catch(e){}
+      return ()=>{ watchers=watchers.filter(x=>x!==w); };
+    },
+    set(path,val){ const d=read(); pathSet(d,path,val); write(d); ch&&ch.postMessage(1); fire(); return Promise.resolve(); },
+    push(path,val){ const d=read();
+      const list=pathGet(d,path)||{};
+      const k="k"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      list[k]=val; pathSet(d,path,list); write(d); ch&&ch.postMessage(1); fire();
+      return Promise.resolve(k); },
+    now(){ return Date.now(); },
+    leave(){ watchers=[]; if(ch) try{ ch.close(); }catch(e){} ch=null; }
+  };
+}
+
+/* ================= 真的連線：Firebase 即時資料庫 ================= */
+/* ⚠ 要填的東西只有 FIRE_CFG 這一段，其他都不用改。 */
+const FIRE_CFG=window.FIRE_CFG||null;   // 由 firebase-config.js 提供
+function FireNet(){
+  let db=null, refs=[], code=null, offset=0;
+  async function boot(){
+    if(db) return db;
+    if(!FIRE_CFG) throw new Error("還沒設定 Firebase");
+    const app=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const rt =await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+    const a=app.initializeApp(FIRE_CFG);
+    db={rt,ref:rt.getDatabase(a)};
+    /* 對錶：大家用伺服器時間算倒數，不然各自的電腦時間差幾秒就亂了 */
+    await new Promise(res=>{
+      rt.onValue(rt.ref(db.ref,".info/serverTimeOffset"),s=>{ offset=s.val()||0; res(); },{onlyOnce:true});
+    });
+    return db;
+  }
+  const R=p=>db.rt.ref(db.ref,"rooms/"+code+(p?"/"+p:""));
+  return {
+    kind:"fire",
+    async create(){
+      await boot(); code=newRoomCode();
+      await db.rt.set(R("createdAt"),db.rt.serverTimestamp());
+      return code;
+    },
+    async join(c){
+      await boot(); code=c;
+      const snap=await db.rt.get(R("createdAt"));
+      if(!snap.exists()) throw new Error("找不到這個房間");
+      return c;
+    },
+    watch(path,cb){
+      const r=R(path);
+      const off=db.rt.onValue(r,s=>{ try{ cb(s.val()); }catch(e){} });
+      refs.push(off);
+      return off;
+    },
+    set(path,val){ return db.rt.set(R(path),val); },
+    async push(path,val){ const r=await db.rt.push(R(path),val); return r.key; },
+    now(){ return Date.now()+offset; },
+    leave(){ for(const o of refs){ try{ o(); }catch(e){} } refs=[]; }
+  };
+}
+
+function makeNet(){
+  /* 有設定就走 Firebase（真的能跟遠端朋友玩）。
+     想在同一台電腦多開分頁測試的話，在網址後面加 ?local 就會切回本機模式。 */
+  const forceLocal=/[?&]local\b/.test(location.search);
+  return (!forceLocal&&FIRE_CFG) ? FireNet() : LocalNet();
+}
+
+
+/* ================= 即時房間：遊戲邏輯 =================
+   一輪的流程（房間的 state 欄位）：
+     lobby   大家在等，房主可以開始
+     compose 輪到的人在錄音（不限時，Alvis 要求的）
+     guess   大家搶答（限時，預設 60 秒）
+     reveal  揭曉這一輪
+   只有房主會寫「換階段」這種決定，其他人只是照著畫面走，
+   不然兩個人同時判定時間到，會重複加分。 */
+
+const GUESS_SECS=60;
+let room=null, myName="", isHost=false, unwatch=[], roundTimer=null;
+let lastGuessKeys={};
+
+function roomOn(path,cb){ if(Net) unwatch.push(Net.watch(path,cb)); }
+function roomOff(){ for(const f of unwatch){ try{ f(); }catch(e){} } unwatch=[]; clearRoundTimer(); }
+function clearRoundTimer(){ if(roundTimer){ clearInterval(roundTimer); roundTimer=null; } }
+
+function askName(){
+  let n=(localStorage.getItem("myName")||"").trim();
+  if(!n){
+    n=(prompt("你叫什麼名字？（房間裡大家會看到）")||"").trim();
+    if(n) localStorage.setItem("myName",n);
+  }
+  return n||"匿名";
+}
+
+/* ---- 開房 / 加入 ---- */
+async function createRoom(){
+  myName=askName(); myId=newId(); isHost=true;
+  Net=makeNet();
+  try{
+    roomCode=await Net.create();
+    await Net.set("host",myId);
+    await Net.set("state","lobby");
+    await Net.set("round",0);
+    await Net.set("players/"+myId,{name:myName,score:0,at:Net.now()});
+    enterRoom();
+  }catch(e){ alert("開房間失敗："+(e.message||e)); }
+}
+async function joinRoom(code){
+  const c=String(code||"").replace(/\D/g,"");
+  if(c.length!==4){ alert("房號是四位數字。"); return; }
+  myName=askName(); myId=newId(); isHost=false;
+  Net=makeNet();
+  try{
+    roomCode=await Net.join(c);
+    await Net.set("players/"+myId,{name:myName,score:0,at:Net.now()});
+    enterRoom();
+  }catch(e){ alert(e.message||"進不去這個房間，確認一下房號。"); }
+}
+
+function enterRoom(){
+  roomOff();
+  $("roomcode").textContent=roomCode;
+  roomOn("",d=>{ room=d||{}; renderRoom(); });
+  show("s-room");
+}
+async function leaveRoom(){
+  try{ if(Net&&myId) await Net.set("players/"+myId,null); }catch(e){}
+  roomOff(); if(Net) Net.leave();
+  Net=null; room=null; roomCode=null; isHost=false;
+  show("s-start");
+}
+
+/* ---- 畫面：依房間狀態決定要看到什麼 ---- */
+function playerList(){
+  const ps=(room&&room.players)||{};
+  return Object.keys(ps).map(id=>({id,...ps[id]}))
+    .sort((a,b)=>(b.score||0)-(a.score||0)||(a.at||0)-(b.at||0));
+}
+function performerId(){ return room&&room.performer; }
+function amPerformer(){ return performerId()===myId; }
+
+function renderRoom(){
+  if(!room) return;
+  isHost=room.host===myId;
+  const st=room.state||"lobby";
+  const list=playerList();
+
+  /* 玩家名單（誰在唱會標出來） */
+  $("roomplayers").innerHTML=list.map(p=>
+    '<div class="qcard"><span class="w">'+esc(p.name||"?")+'</span>'+
+    (p.id===performerId()?'<span class="n" style="color:var(--teal)">正在出題</span>':'')+
+    (p.id===room.host?'<span class="n">房主</span>':'')+
+    '<span class="sg">'+(p.score||0)+' 分</span></div>').join("");
+  $("roomcount").textContent=list.length;
+
+  for(const id of ["rmLobby","rmWait","rmLive","rmReveal"]) $(id).style.display="none";
+
+  if(st==="lobby"){
+    $("rmLobby").style.display="";
+    $("hostStart").style.display=isHost?"":"none";
+    $("waitHost").style.display=isHost?"none":"";
+    $("hostStart").disabled=list.length<2;
+    $("lobbyHint").textContent=list.length<2
+      ? "至少要兩個人才能開始。把房號給朋友，他們輸入就進得來。"
+      : list.length+" 個人在房間裡，隨時可以開始。";
+  }
+  else if(st==="compose"){
+    if(amPerformer()){
+      /* 輪到我出題：借用原本的出題流程，錄完送出給大家 */
+      if(!$("s-make").classList.contains("on")&&!$("s-rec").classList.contains("on")
+         &&!$("s-check").classList.contains("on")){
+        mode="room"; pack=[]; draft=null; curve=null;
+        toMake();
+      }
+      return;
+    }
+    $("rmWait").style.display="";
+    const p=(room.players||{})[performerId()]||{};
+    $("waitWho").textContent=(p.name||"有人")+" 正在想歌…";
+  }
+  else if(st==="guess"){
+    if(!$("s-room").classList.contains("on")) show("s-room");
+    $("rmLive").style.display="";
+    setupLive();
+    maybeEndRound();   // 房裡任何人收到新的搶答，都順手檢查這輪是不是該收了
+  }
+  else if(st==="reveal"){
+    if(!$("s-room").classList.contains("on")) show("s-room");
+    $("rmReveal").style.display="";
+    renderReveal();
+  }
+}
+
+/* ---- 房主：開始一輪 ---- */
+async function startRound(){
+  if(!isHost) return;
+  const list=playerList();
+  if(list.length<2) return;
+  const r=(room.round||0)+1;
+  /* 輪流當出題的人：照加入順序輪 */
+  const order=list.slice().sort((a,b)=>(a.at||0)-(b.at||0));
+  const next=order[(r-1)%order.length];
+  await Net.set("guesses",null);
+  await Net.set("puzzle",null);
+  await Net.set("round",r);
+  await Net.set("performer",next.id);
+  await Net.set("state","compose");
+}
+
+/* ---- 出題的人：錄完送出 ---- */
+async function submitPuzzle(){
+  if(!draft||!draft.curve){ alert("還沒錄好。"); return; }
+  const packet=toB64(await gz(packCurveBytes(draft.curve)));
+  await Net.set("puzzle",{
+    target:draft.target, song:draft.song||"", by:myId,
+    packet:packet, len:[...draft.target].length
+  });
+  await Net.set("deadline",Net.now()+GUESS_SECS*1000);
+  await Net.set("state","guess");
+}
+/* 只包曲線（房間版不用把謎底也塞進去，謎底另外走欄位） */
+function packCurveBytes(c){ return packCurve(c); }
+
+/* ---- 搶答畫面 ---- */
+let liveReady=false;
+async function setupLive(){
+  const pz=room.puzzle;
+  if(!pz){ return; }
+  if(!liveReady||liveReady!==pz.packet){
+    liveReady=pz.packet;
+    try{
+      curve=unpackCurve(await ungz(fromB64(pz.packet)));
+    }catch(e){ curve=null; }
+    ensureAC();
+    $("liveask").textContent="謎底是哪"+(CNUM[pz.len]||pz.len)+"個字？";
+    $("liveword").value="";
+    $("liveword").maxLength=Math.max(4,pz.len+2);
+    setTimeout(()=>drawRoll("cvLive",curve,{span:span()}),60);
+    wireLiveWave();
+  }
+  const me=amPerformer();
+  $("livemine").style.display=me?"":"none";
+  $("liveinput").style.display=me?"none":"";
+  if(me){
+    const pz2=room.puzzle||{};
+    $("livemineword").textContent=pz2.target||"";
+  }
+  renderGuesses();
+  startCountdown();
+}
+function startCountdown(){
+  clearRoundTimer();
+  const tick=()=>{
+    if(!room||room.state!=="guess"){ clearRoundTimer(); return; }
+    const left=Math.max(0,Math.ceil(((room.deadline||0)-Net.now())/1000));
+    $("livetime").textContent=left;
+    if(left<=0){ clearRoundTimer(); maybeEndRound(); }
+  };
+  tick(); roundTimer=setInterval(tick,250);
+}
+function renderGuesses(){
+  const g=(room&&room.guesses)||{};
+  const keys=Object.keys(g).sort();
+  $("chat").innerHTML=keys.map(k=>{
+    const x=g[k];
+    return '<div class="msg'+(x.ok?" hit":"")+'"><b>'+esc(x.name)+'</b>'+
+      (x.ok?'<span class="ok">猜中了！</span>':'<span>'+esc(x.text)+'</span>')+'</div>';
+  }).join("");
+  const box=$("chat"); box.scrollTop=box.scrollHeight;
+  /* 已經猜中的人不用再打 */
+  const mine=keys.map(k=>g[k]).filter(x=>x.by===myId&&x.ok);
+  if(mine.length){ $("liveinput").style.display="none"; $("livedone").style.display=""; }
+  else $("livedone").style.display="none";
+}
+async function sendGuess(){
+  const pz=room&&room.puzzle; if(!pz) return;
+  const t=$("liveword").value.replace(/\s+/g,"");
+  if(!t) return;
+  $("liveword").value="";
+  const ok=(t===pz.target);
+  const already=Object.values((room.guesses)||{}).filter(x=>x.ok).length;
+  await Net.push("guesses",{by:myId,name:myName,text:t,ok:ok,at:Net.now(),rank:ok?already+1:0});
+  if(ok){
+    celebrate(true);
+    /* 越早猜中分數越高：第一個 100，之後每名少 15，最低 40 */
+    const pts=Math.max(40,100-15*already);
+    const cur=((room.players||{})[myId]||{}).score||0;
+    await Net.set("players/"+myId+"/score",cur+pts);
+    /* 出題的人每被猜中一次也加 20 */
+    const pid=pz.by;
+    if(pid&&(room.players||{})[pid]){
+      const s=(room.players[pid].score||0)+20;
+      await Net.set("players/"+pid+"/score",s);
+    }
+    maybeEndRound();
+  }else{
+    celebrate(false);
+  }
+}
+
+/* 這一輪該結束了嗎？
+   ⚠ 不能只讓房主判斷——最後一個猜中的人不一定是房主，
+      那樣全部人都猜中了畫面還是會卡在搶答，要乾等 60 秒。
+      倒數結束也一樣：房主的分頁被系統凍在背景，整場就沒人收尾。
+   所以改成「誰都可以喊結束」。反正寫進去的值都是 "reveal"，
+   兩個人同時喊也只是寫到同一個結果，不會重複加分（加分在各自的 sendGuess 裡）。 */
+function maybeEndRound(){
+  if(!room||room.state!=="guess"||!Net) return;
+  const others=playerList().filter(p=>p.id!==performerId()).length;
+  const hits=Object.values(room.guesses||{}).filter(x=>x.ok).length;
+  const timeUp=(room.deadline||0)>0&&Net.now()>=room.deadline;
+  if((others>0&&hits>=others)||timeUp) Net.set("state","reveal");
+}
+
+/* ---- 揭曉 ---- */
+function renderReveal(){
+  const pz=room.puzzle||{};
+  const g=room.guesses||{};
+  const hits=Object.values(g).filter(x=>x.ok);
+  $("revword").textContent=pz.target||"";
+  $("revsong").textContent=pz.song||"（沒填）";
+  $("revsongrow").style.display=pz.song?"":"none";
+  $("revhits").innerHTML=hits.length
+    ? hits.sort((a,b)=>a.at-b.at).map((x,i)=>
+        '<div class="scoreline"><span class="n">第 '+(i+1)+'</span>'+
+        '<span class="a">'+esc(x.name)+'</span>'+
+        '<span class="r y">猜中</span></div>').join("")
+    : '<p class="dim" style="margin:0">沒有人猜中。</p>';
+  $("revboard").innerHTML=playerList().map((p,i)=>
+    '<div class="scoreline"><span class="n">'+(i+1)+'</span>'+
+    '<span class="a">'+esc(p.name)+'</span>'+
+    '<span class="r">'+(p.score||0)+' 分</span></div>').join("");
+  $("revnext").style.display=isHost?"":"none";
+  $("revwait").style.display=isHost?"none":"";
+}
+
+/* ---- 搶答畫面的波形：壓住＝從那裡聽 ---- */
+function wireLiveWave(){
+  const cv=$("cvLive"), wr=$("wrapLive");
+  if(!cv||cv.dataset.wired) return; cv.dataset.wired="1";
+  const posT=e=>{const r=cv.getBoundingClientRect();
+    return Math.max(0,Math.min(1,(e.clientX-r.left-PADL)/(r.width-PADL-4)))*span();};
+  cv.addEventListener("pointerdown",e=>{
+    if(e.button===2) return;
+    e.preventDefault(); try{cv.setPointerCapture(e.pointerId);}catch(_){}
+    heldOn=true; wr.classList.add("hold");
+    if(!playFrom(posT(e))) endLiveHold();
+  });
+  ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>cv.addEventListener(ev,endLiveHold));
+  cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+}
+function endLiveHold(){
+  if(!heldOn) return;
+  heldOn=false;
+  const wr=$("wrapLive"); if(wr) wr.classList.remove("hold");
+  stopAll(); drawRoll("cvLive",curve,{span:span()});
+}
 
 /* ============ 開頁面 ============ */
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0803n";
+const BUILD="0804b";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
