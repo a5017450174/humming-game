@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>人聲轉純音高（去歌詞）</title>
+<style>
+  html,body{margin:0;min-height:100%;background:#15161a;color:#e6e3dc;
+    font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif}
+  #wrap{display:flex;flex-direction:column;min-height:100vh}
+  #top{padding:14px 18px;background:#1c1e24;border-bottom:1px solid #2e313a}
+  #top h1{font-size:20px;margin:0 0 6px;color:#f0b840}
+  #top p{margin:0;font-size:14px;line-height:1.8;color:#a8a59d}
+  #recRow{display:flex;align-items:center;gap:16px;padding:14px 18px;flex-wrap:wrap;
+    background:#1c1e24;border-bottom:1px solid #2e313a}
+  #timer{font-size:22px;font-variant-numeric:tabular-nums;color:#f0b840;min-width:64px}
+  #status{font-size:14px;color:#a8a59d}
+  button{font-family:inherit;font-size:15px;padding:9px 18px;border-radius:8px;border:1px solid #4a4e58;
+    background:#282c34;color:#e6e3dc;cursor:pointer}
+  button:hover:not(:disabled){background:#343945}
+  button:disabled{opacity:.4;cursor:default}
+  button.rec{border-color:#c0503c;color:#ff8f78}
+  button.rec:hover:not(:disabled){background:#3a2620}
+  button.on{background:#4a3a18;border-color:#f0b840;color:#f0b840}
+  #playRow{display:flex;align-items:center;gap:22px;padding:14px 18px;flex-wrap:wrap;
+    background:#1c1e24;border-bottom:1px solid #2e313a}
+  #playRow .col{display:flex;flex-direction:column;gap:6px}
+  #playRow label{font-size:13px;color:#8e8c86}
+  audio{height:32px;width:220px}
+  select,input[type=range]{font-family:inherit}
+  select{font-size:14px;padding:5px 8px;border-radius:6px;background:#282c34;color:#e6e3dc;border:1px solid #4a4e58}
+  input[type=range]{width:150px;vertical-align:middle}
+  #mixer{display:none;margin:14px 18px 0;padding:16px 18px;border:1px solid #4a4e58;
+    border-radius:10px;background:#20232a;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+  #mixer h2{font-size:17px;color:#f0b840;margin:0 0 6px}
+  #mixer p{margin:0 0 14px;color:#8e8c86;font-size:13px;line-height:1.7}
+  .mixerGrid{display:grid;grid-template-columns:minmax(170px,240px) minmax(230px,1fr);gap:12px 22px;align-items:center}
+  .mixerGrid label{font-size:13px;color:#c9c6bd}
+  .mixControl{display:flex;align-items:center;gap:10px}
+  .mixControl input[type=range]{width:min(320px,55vw);flex:1}
+  .mixValue{width:42px;text-align:right;color:#f0b840;font-variant-numeric:tabular-nums}
+  .mixActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+  #mixStatus{margin-top:10px;color:#6f7480;font-size:13px;min-height:1.5em}
+  @media(max-width:680px){.mixerGrid{grid-template-columns:1fr}.mixControl input[type=range]{width:100%}}
+  .tag{color:#6f7480;font-size:13px}
+  .chk{display:flex;align-items:flex-start;gap:7px;font-size:13px;color:#c9c6bd;max-width:210px;line-height:1.6}
+  .chk input{margin-top:3px;flex-shrink:0}
+  .chk small{color:#6f7480;font-size:12px}
+  #liveRow{display:flex;align-items:center;gap:22px;padding:10px 18px;flex-wrap:wrap;
+    background:#1c1e24;border-bottom:1px solid #2e313a}
+  #noteBig{font-size:38px;font-weight:bold;min-width:96px;letter-spacing:1px;color:#f0b840}
+  #freqTxt{font-size:14px;color:#8e8c86;min-width:90px}
+  #centsWrap{position:relative;width:220px;height:24px;background:#242730;border-radius:6px;overflow:hidden}
+  #centsFill{position:absolute;top:0;bottom:0;left:50%;width:0;background:#4a8f6a}
+  #centsMid{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#6f7480}
+  #centsTxt{font-size:14px;min-width:90px;color:#c9c6bd}
+  #canvasWrap{padding:14px 18px;flex:1}
+  canvas{width:100%;height:340px;display:block;background:#101115;border:1px solid #2e313a;border-radius:8px}
+  #hint{padding:6px 18px 18px;font-size:13px;color:#6f7480;line-height:1.8}
+  #startScreen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:20px;background:rgba(18,19,23,.97);z-index:10;text-align:center;padding:24px}
+  #startScreen h1{font-size:30px;margin:0;color:#f0b840}
+  #startScreen p{max-width:560px;line-height:2;color:#c9c6bd;font-size:16px;margin:0;text-align:left}
+  #startScreen b{color:#f0b840}
+  #bigStart{font-size:20px;padding:14px 34px;border-color:#f0b840;color:#f0b840}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="top">
+    <h1>🎤 → 🔊 人聲轉純音高</h1>
+    <p>錄一段 10–15 秒的清唱，錄的當下會即時顯示你現在的音高。
+       錄完會分析出「音高」和「音量」怎麼變化（含抖音），一次合成三種版本：鋸齒喇叭／正弦波／方波喇叭。
+       你可以分開比較，也可以在 Mixer 裡把原音與樂器版同步播放、調整比例並下載混音。</p>
+  </div>
+
+  <div id="recRow">
+    <button id="btnRec" class="rec" onclick="toggleRec()">🎙️ 開始錄音</button>
+    <div id="timer">0.0 秒</div>
+    <div id="status">請先按開始，會問你要不要開麥克風</div>
+  </div>
+
+  <div id="liveRow">
+    <div id="noteBig">—</div>
+    <div id="freqTxt">— Hz</div>
+    <div id="centsWrap"><div id="centsFill"></div><div id="centsMid"></div></div>
+    <div id="centsTxt">—</div>
+    <div class="tag" id="clarityTxt">把握度 —</div>
+  </div>
+
+  <div id="playRow" style="display:none">
+    <div class="col">
+      <label>原音</label>
+      <audio id="origAudio" controls></audio>
+    </div>
+    <div class="col">
+      <label>1. 鋸齒喇叭</label>
+      <audio id="synth_sawtooth" controls></audio>
+      <button id="dl_sawtooth" onclick="downloadWav('sawtooth')" disabled>下載</button>
+    </div>
+    <div class="col">
+      <label>2. 正弦波</label>
+      <audio id="synth_sine" controls></audio>
+      <button id="dl_sine" onclick="downloadWav('sine')" disabled>下載</button>
+    </div>
+    <div class="col">
+      <label>3. 方波喇叭</label>
+      <audio id="synth_square" controls></audio>
+      <button id="dl_square" onclick="downloadWav('square')" disabled>下載</button>
+    </div>
+    <div class="col">
+      <label>安靜門檻（氣音/雜音要不要算有聲）</label>
+      <input type="range" id="gate" min="0" max="0.08" step="0.002" value="0.012" onchange="resynthAll()">
+    </div>
+    <div class="col">
+      <label>音高平滑（太高會吃掉抖音）</label>
+      <input type="range" id="smooth" min="0" max="3" step="1" value="1" onchange="resynthAll()">
+    </div>
+    <div class="col">
+      <label>八度跳動</label>
+      <div class="chk">
+        <input type="checkbox" id="fixOct" checked onchange="resynthAll()">
+        <span>自動修掉誤判的八度<br>
+          <small>如果你真的在唱約德爾那種快速大跳，把這個取消勾選</small></span>
+      </div>
+    </div>
+  </div>
+
+  <section id="mixer" aria-labelledby="mixerTitle">
+    <h2 id="mixerTitle">原音 × 樂器 Mixer</h2>
+    <p>兩軌會從同一個 AudioContext 時間點啟動。拉霸可在播放中即時調整；下載會依目前比例輸出一個同步混音 WAV。</p>
+    <div class="mixerGrid">
+      <label for="mixType">樂器版本</label>
+      <select id="mixType" onchange="stopMixPlayback()">
+        <option value="sawtooth">鋸齒喇叭</option>
+        <option value="sine">正弦波</option>
+        <option value="square">方波喇叭</option>
+      </select>
+      <label for="mixVoice">原音音量</label>
+      <div class="mixControl">
+        <input type="range" id="mixVoice" min="0" max="100" value="70" oninput="updateMixLevels()">
+        <span class="mixValue" id="mixVoiceValue">70</span>
+      </div>
+      <label for="mixInstrument">樂器版音量</label>
+      <div class="mixControl">
+        <input type="range" id="mixInstrument" min="0" max="100" value="70" oninput="updateMixLevels()">
+        <span class="mixValue" id="mixInstrumentValue">70</span>
+      </div>
+    </div>
+    <div class="mixActions">
+      <button id="playMix" class="on" onclick="playMixed()" disabled>▶ 同步播放</button>
+      <button onclick="stopMixPlayback()">■ 停止</button>
+      <button id="downloadMix" onclick="downloadMixedWav()" disabled>下載混音 WAV</button>
+    </div>
+    <div id="mixStatus" role="status">錄音並完成合成後，就能使用 Mixer。</div>
+  </section>
+
+  <div id="canvasWrap">
+    <canvas id="roll"></canvas>
+  </div>
+  <div id="hint" class="tag">畫面上的線＝偵測到的音高走勢，線愈粗愈亮＝那一刻聲音愈大聲，可以直接看到抖音的抖動。</div>
+</div>
+
+<div id="startScreen">
+  <h1>🎤 人聲轉純音高</h1>
+  <p>
+    按下面的按鈕開始，接著<b>錄一段 10–15 秒的清唱</b>（單音或一句旋律都可以，建議戴耳機唱）。<br><br>
+    錄完會自動分析你的<b>音高</b>和<b>音量</b>隨時間怎麼變（抖音也算在音高變化裡），
+    然後拿這條「音高＋音量」的曲線去控制一個正弦波（或喇叭聲）重新發聲。<br><br>
+    結果就是：<b>旋律的抑揚頓挫都還在，但完全沒有字、沒有你原本的音色</b>——
+    只剩一條會抖、會強弱變化的純音。
+  </p>
+  <button id="bigStart" onclick="closeStart()">知道了，開始使用</button>
+</div>
+
+<script>
+"use strict";
+const NAMES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const BLACK={1:1,3:1,6:1,8:1,10:1};
+const cv=document.getElementById("roll"), ctx=cv.getContext("2d");
+
+let recAC=null, mediaRecorder=null, chunks=[], recStream=null;
+let recording=false, recStartTime=0, timerInt=null;
+let monoData=null, sampleRate=44100;      // 錄完解碼出來的原始資料
+let rawFrames=null, hopSizeSec=0.01;       // 逐格分析結果（還沒套安靜門檻/平滑）
+let curFreqCurve=null, curGainCurve=null, curDuration=0;
+const WAVE_TYPES=["sawtooth","sine","square"];
+let synthBlobs={sawtooth:null,sine:null,square:null};
+let synthBuffers={sawtooth:null,sine:null,square:null};
+let originalBuffer=null;
+let mixAC=null, mixSources=[], mixVoiceGain=null, mixInstrumentGain=null;
+let mixPlaybackToken=0, synthesisGeneration=0, recordingGeneration=0, recordingStarting=false;
+let lastOctFixCount=0;
+
+// 錄音當下即時顯示用（跟唱歌音高偵測工具同一套）
+let liveAnalyser=null, liveBuf=null, liveT0=0;
+let liveBlobs=[], liveCur=null, liveViewLo=45, liveViewHi=76;
+
+function closeStart(){ document.getElementById("startScreen").style.display="none"; }
+
+function resize(){
+  const r=cv.getBoundingClientRect();
+  cv.width=r.width*devicePixelRatio; cv.height=r.height*devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+addEventListener("resize",resize);
+
+function roundRect(x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+function noteName(m){ const r=Math.round(m); return NAMES[((r%12)+12)%12]+(Math.floor(r/12)-1); }
+function freqToMidi(f){ return 69+12*Math.log2(f/440); }
+function midiToFreq(m){ return 440*Math.pow(2,(m-69)/12); }
+
+// ---------- 逐格偵測音高（McLeod 法：跟音高偵測工具同一套 NSDF 自相關） ----------
+// 就地做 FFT（inverse=true 時是反變換）。自相關和頻譜都靠它。
+function fftInPlace(re,im,inverse){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){
+    let bit=n>>1;
+    for(;j&bit;bit>>=1) j^=bit;
+    j^=bit;
+    if(i<j){ let t=re[i];re[i]=re[j];re[j]=t; t=im[i];im[i]=im[j];im[j]=t; }
+  }
+  for(let len=2;len<=n;len<<=1){
+    const ang=(inverse?2:-2)*Math.PI/len;
+    const wr=Math.cos(ang), wi=Math.sin(ang), half=len>>1;
+    for(let i=0;i<n;i+=len){
+      let cwr=1,cwi=0;
+      for(let j=0;j<half;j++){
+        const ur=re[i+j], ui=im[i+j];
+        const vr=re[i+j+half]*cwr-im[i+j+half]*cwi;
+        const vi=re[i+j+half]*cwi+im[i+j+half]*cwr;
+        re[i+j]=ur+vr; im[i+j]=ui+vi;
+        re[i+j+half]=ur-vr; im[i+j+half]=ui-vi;
+        const nwr=cwr*wr-cwi*wi; cwi=cwr*wi+cwi*wr; cwr=nwr;
+      }
+    }
+  }
+  if(inverse) for(let i=0;i<n;i++){ re[i]/=n; im[i]/=n; }
+}
+
+// 算 NSDF（McLeod 的正規化自相關）。
+// 分子那段用 FFT 做互相關，比逐個 tau 硬乘快好幾倍——15 秒的錄音差在「等一下」和「以為當掉」。
+const _nsdfBuf={};
+function computeNSDF(b,rate){
+  const SIZE=b.length;
+  let rms=0; for(let i=0;i<SIZE;i++) rms+=b[i]*b[i];
+  rms=Math.sqrt(rms/SIZE);
+  if(rms<0.0006) return {nsdf:null,rms};
+  const minLag=Math.max(2,Math.floor(rate/1100));
+  const maxLag=Math.min(SIZE-2,Math.floor(rate/65));
+  const W=Math.min(1024,SIZE-maxLag);
+  if(W<32) return {nsdf:null,rms};
+
+  let L=1; while(L<W+maxLag+1) L<<=1;
+  if(_nsdfBuf.L!==L){   // 這幾塊記憶體重複用，免得每一格都重新配置
+    _nsdfBuf.L=L;
+    _nsdfBuf.ar=new Float64Array(L); _nsdfBuf.ai=new Float64Array(L);
+    _nsdfBuf.br=new Float64Array(L); _nsdfBuf.bi=new Float64Array(L);
+  }
+  const {ar,ai,br,bi}=_nsdfBuf;
+  ar.fill(0); ai.fill(0); br.fill(0); bi.fill(0);
+  for(let i=0;i<W;i++) ar[i]=b[i];
+  const bLen=Math.min(SIZE,W+maxLag);
+  for(let i=0;i<bLen;i++) br[i]=b[i];
+  fftInPlace(ar,ai,false);
+  fftInPlace(br,bi,false);
+  for(let i=0;i<L;i++){          // conj(A) * B ＝ 互相關
+    const rr=ar[i]*br[i]+ai[i]*bi[i];
+    const ii=ar[i]*bi[i]-ai[i]*br[i];
+    ar[i]=rr; ai[i]=ii;
+  }
+  fftInPlace(ar,ai,true);
+
+  const S=new Float64Array(SIZE+1);        // 平方和的前綴和，讓分母變成 O(1)
+  for(let i=0;i<SIZE;i++) S[i+1]=S[i]+b[i]*b[i];
+  const P0=S[W];
+  const nsdf=new Float32Array(maxLag+2);
+  for(let tau=minLag;tau<=maxLag;tau++){
+    const end=Math.min(tau+W,SIZE);
+    const div=P0+(S[end]-S[tau]);
+    nsdf[tau]=div>0?2*ar[tau]/div:0;
+  }
+  return {nsdf,minLag,maxLag,rms};
+}
+function findPeaks(nsdf,minLag,maxLag){
+  const peaks=[];
+  for(let tau=minLag+1;tau<maxLag;tau++){
+    if(nsdf[tau]>nsdf[tau-1]&&nsdf[tau]>=nsdf[tau+1]&&nsdf[tau]>0) peaks.push(tau);
+  }
+  return peaks;
+}
+function refinePeakFreq(nsdf,tau,rate){
+  const y1=nsdf[tau-1],y2=nsdf[tau],y3=nsdf[tau+1];
+  const a=(y1+y3-2*y2)/2, bb=(y3-y1)/2;
+  const shift=a?-bb/(2*a):0;
+  return rate/(tau+shift);
+}
+
+// ---------- 頻譜：用來驗證「基頻到底在不在」 ----------
+// 為什麼需要這一段：每個母音的第一共振峰（F1）位置不同，「衣」「烏」這種閉母音 F1 特別低（約 270–300Hz）。
+// 當唱的音高讓 F1 剛好落在第二泛音上（例如基頻 140Hz、第二泛音 280Hz），聲道會把第二泛音放大到
+// 比基頻還大聲，自相關法看到「最強的週期」就在那，於是判成高一個八度。
+// 但基頻只是被壓小、不是消失，所以回頭查頻譜就能把它找回來。
+const _magBuf={};
+function fftMag(buf,size){
+  if(_magBuf.size!==size){
+    _magBuf.size=size;
+    _magBuf.re=new Float64Array(size); _magBuf.im=new Float64Array(size);
+    _magBuf.mag=new Float32Array(size>>1);
+    _magBuf.win=new Float64Array(size);
+    for(let i=0;i<size;i++) _magBuf.win[i]=0.5-0.5*Math.cos(2*Math.PI*i/(size-1)); // Hann 窗
+  }
+  const {re,im,mag,win}=_magBuf;
+  for(let i=0;i<size;i++){ re[i]=buf[i]*win[i]; im[i]=0; }
+  fftInPlace(re,im,false);
+  for(let i=0;i<mag.length;i++) mag[i]=Math.sqrt(re[i]*re[i]+im[i]*im[i]);
+  return mag;
+}
+// 某個頻率上「有沒有一根真的突起來的峰」＝該處峰值 ÷ 附近的底噪。
+// 只看「那裡有多少能量」會被旁邊強泛音的裙擺騙到，一定要看它有沒有突出於周圍。
+function peakProminence(mag,rate,size,f){
+  const bin=f*size/rate;
+  if(bin<3||bin>mag.length-4) return 0;
+  const c=Math.round(bin);
+  let peak=0;
+  for(let i=Math.max(0,c-1);i<=Math.min(mag.length-1,c+1);i++) peak=Math.max(peak,mag[i]);
+  const w=Math.max(4,Math.round(bin*0.35)); // 往兩邊看，範圍隨頻率縮放
+  const vals=[];
+  for(let i=Math.max(1,c-w);i<=Math.min(mag.length-1,c+w);i++){
+    if(Math.abs(i-c)<=2) continue;
+    vals.push(mag[i]);
+  }
+  if(vals.length<4) return 0;
+  vals.sort((a,b)=>a-b);
+  const floor=vals[Math.floor(vals.length*0.5)]; // 中位數當底噪
+  return peak/(floor+1e-12);
+}
+// 回傳 0~1：這個候選音高「其實高了一個八度」的證據有多強（Sun 2002 的 SHR 精神）。
+// 要成立的話，真正基頻 f0/2 的「第一泛音」和「第三泛音」都必須是真的突起來的峰——
+// 兩個位置同時中，頻譜裙擺的洩漏是做不到的，這樣才不會把泛音很豐富的母音（像「啊」）誤判成低八度。
+function peakMagAt(mag,rate,size,f){
+  const c=Math.round(f*size/rate);
+  if(c<2||c>mag.length-3) return 0;
+  let m=0; for(let i=c-1;i<=c+1;i++) m=Math.max(m,mag[i]);
+  return m;
+}
+function octaveUpEvidence(mag,rate,size,f0,gmax){
+  const half=f0/2;
+  if(half<60) return 0;              // 再往下已經不像人聲基頻，不用懷疑
+  if(f0*1.5>rate/2*0.9) return 0;
+  // 先擋掉「那裡根本沒有聲音」的情況：頻譜上空無一物的區域，數值噪聲彼此相除也可能得到很大的比值，
+  // 會把真正的高音硬拉低好幾個八度。真的被壓小的基頻仍遠高於這條線。
+  const absFloor=gmax*0.004;                      // 約 -48dB
+  if(peakMagAt(mag,rate,size,half)<absFloor) return 0;
+  if(peakMagAt(mag,rate,size,f0*1.5)<absFloor) return 0;
+  const p1=peakProminence(mag,rate,size,half);    // 真基頻本人
+  const p3=peakProminence(mag,rate,size,f0*1.5);  // 真基頻的第三泛音
+  const s=Math.min(p1,p3);                        // 兩個都要有
+  return Math.max(0,Math.min(1,(s-3)/9));
+}
+
+// 即時顯示用：跟原本音高偵測工具一樣，單一最佳解，追求即時反應
+function detectPitchFrame(b,rate){
+  const r=computeNSDF(b,rate);
+  if(!r.nsdf) return {f:-1,clarity:0,rms:r.rms};
+  const {nsdf,minLag,maxLag,rms}=r;
+  const peaks=findPeaks(nsdf,minLag,maxLag);
+  let maxVal=0; for(const p of peaks) if(nsdf[p]>maxVal) maxVal=nsdf[p];
+  if(!peaks.length||maxVal<0.45) return {f:-1,clarity:maxVal,rms};
+  const thr=maxVal*0.9;
+  let best=-1;
+  for(const p of peaks){ if(nsdf[p]>=thr){ best=p; break; } }
+  if(best<1) return {f:-1,clarity:maxVal,rms};
+  let f=refinePeakFreq(nsdf,best,rate);
+  // 即時顯示也做同一套母音／八度校正，免得畫面跟最後合成出來的結果對不起來
+  const size=1<<Math.floor(Math.log2(b.length));
+  const mag=fftMag(b.subarray(0,size),size);
+  let gmax=0; for(let i=1;i<mag.length;i++) if(mag[i]>gmax) gmax=mag[i];
+  for(let i=0;i<2;i++){
+    if(octaveUpEvidence(mag,rate,size,f,gmax)>=0.28 && f/2>=60) f/=2; else break;
+  }
+  return {f, clarity:nsdf[best], rms};
+}
+
+// 離線分析用：保留好幾個候選音高（含可能被誤判成八度的候選），
+// 留給後面的動態規劃去挑一條最連貫的路徑，不要單看這一格就決定。
+function detectPitchCandidates(b,rate){
+  const r=computeNSDF(b,rate);
+  if(!r.nsdf) return {rms:r.rms,candidates:[]};
+  const {nsdf,minLag,maxLag,rms}=r;
+  const peaks=findPeaks(nsdf,minLag,maxLag); // findPeaks 回傳 tau 由小到大（頻率由高到低）
+  if(!peaks.length) return {rms,candidates:[]};
+  let maxVal=0; for(const p of peaks) if(nsdf[p]>maxVal) maxVal=nsdf[p];
+  if(maxVal<0.4) return {rms,candidates:[]};
+  // 一個接近純音的訊號，自相關在整數倍週期（2T、3T…）的地方也會幾乎一樣高——
+  // 這就是自相關法典型的「誤判成低八度」陷阱。跟原本單格判斷同一招：
+  // tau 最小（頻率最高）、又清得過 90% 門檻的那個，才是真正的基頻，標記起來給動態規劃當作預設偏好。
+  const thr=maxVal*0.9;
+  let preferredTau=-1;
+  for(const p of peaks){ if(nsdf[p]>=thr){ preferredTau=p; break; } }
+  const floor=Math.max(0.4,maxVal*0.5);
+  // 注意：穩定的長音在「週期的每個整數倍」都會有幾乎一樣高的峰（2T、3T…8T），
+  // 只取前幾強會把正確答案本身擠掉，所以上面那個依規則選出來的 preferredTau 一定要留著。
+  const kept=peaks.filter(p=>nsdf[p]>=floor).sort((a,b2)=>nsdf[b2]-nsdf[a]).slice(0,4);
+  if(preferredTau>0&&kept.indexOf(preferredTau)<0) kept.push(preferredTau);
+  const candidates=kept
+    .map(p=>({freq:refinePeakFreq(nsdf,p,rate),nsdf:nsdf[p],preferred:p===preferredTau}));
+
+  // 回頭查頻譜：某些母音（「衣」「烏」）會讓基頻被壓得比第二泛音還小聲，
+  // 這時自相關的最強週期會落在高一個八度。基頻只是變小、沒有消失，所以查得到。
+  const size=1<<Math.floor(Math.log2(b.length));
+  const mag=fftMag(b.subarray(0,size),size);
+  let gmax=0; for(let i=1;i<mag.length;i++) if(mag[i]>gmax) gmax=mag[i];
+  for(const c of candidates) c.octUp=octaveUpEvidence(mag,rate,size,c.freq,gmax);
+
+  // 證據夠強的話，把「低一個八度」這個選項明確補進候選名單，
+  // 免得基頻被壓太小、自相關根本沒在那裡產生波峰，動態規劃連選都沒得選。
+  const extra=[];
+  for(const c of candidates){
+    if(c.octUp<0.22) continue;
+    const halfF=c.freq/2;
+    if(halfF<60) continue;
+    if(candidates.some(o=>Math.abs(freqToMidi(o.freq)-freqToMidi(halfF))<0.6)) continue;
+    if(extra.some(o=>Math.abs(freqToMidi(o.freq)-freqToMidi(halfF))<0.6)) continue;
+    extra.push({freq:halfF,nsdf:c.nsdf*0.9,preferred:false,
+                octUp:octaveUpEvidence(mag,rate,size,halfF,gmax)});
+  }
+  const all=candidates.concat(extra)
+    .map(c=>({midi:freqToMidi(c.freq),nsdf:c.nsdf,preferred:c.preferred,octUp:c.octUp}));
+  return {rms,candidates:all};
+}
+
+// 用動態規劃（跟 Praat 的音高路徑演算法同一個精神）在整段錄音裡挑一條最連貫的音高路徑：
+// 每一格的候選音高，成本＝自相關強度不夠好的懲罰＋跟前一格差多少八度的跳動懲罰。
+// 唱大聲時偶爾冒出來的「八度／兩個八度」候選，因為只撐一兩格、前後格都不支持，
+// 走這條路要付兩次跳動的錢，划不來，動態規劃自然就繞開它、留在真正的音高上。
+function dpChoosePitch(frames,gate){
+  const n=frames.length;
+  const voiced=new Uint8Array(n);
+  const midi=new Float32Array(n);
+  const JUMP_COST=0.8;   // 每跳一個八度的懲罰（跨格）
+  const PREF_PENALTY=0.35; // 這一格沒選「原本規則會選的那個」要多付的錢（同一格內）
+  const OCT_UP_PENALTY=1.6; // 頻譜顯示「這個其實高了一個八度」時要多付的錢
+  // 頻譜證據夠強時蓋過 preferred：某些母音本來就會讓自相關偏向高八度，這時要信頻譜
+  const qualityCost=c=>(1-c.nsdf)
+    +((c.preferred&&(c.octUp||0)<0.22)?0:PREF_PENALTY)
+    +OCT_UP_PENALTY*(c.octUp||0);
+  let i=0;
+  while(i<n){
+    if(!(frames[i].candidates.length>0&&frames[i].rms>=gate)){ i++; continue; }
+    let j=i;
+    while(j<n&&frames[j].candidates.length>0&&frames[j].rms>=gate) j++;
+    const seg=[]; for(let k=i;k<j;k++) seg.push(frames[k].candidates);
+    const dp=[], back=[];
+    for(let k=0;k<seg.length;k++){
+      const cs=seg[k];
+      const dpk=new Array(cs.length), backk=new Array(cs.length).fill(-1);
+      if(k===0){
+        for(let c=0;c<cs.length;c++) dpk[c]=qualityCost(cs[c]);
+      }else{
+        const prevDp=dp[k-1], prevCs=seg[k-1];
+        for(let c=0;c<cs.length;c++){
+          let bestCost=Infinity,bestPrev=0;
+          for(let p=0;p<prevCs.length;p++){
+            const jump=Math.abs(cs[c].midi-prevCs[p].midi)/12;
+            const cost=prevDp[p]+JUMP_COST*jump;
+            if(cost<bestCost){ bestCost=cost; bestPrev=p; }
+          }
+          dpk[c]=bestCost+qualityCost(cs[c]);
+          backk[c]=bestPrev;
+        }
+      }
+      dp.push(dpk); back.push(backk);
+    }
+    let bestC=0,bestVal=Infinity;
+    for(let c=0;c<dp[seg.length-1].length;c++) if(dp[seg.length-1][c]<bestVal){ bestVal=dp[seg.length-1][c]; bestC=c; }
+    const chosen=new Array(seg.length); chosen[seg.length-1]=bestC;
+    for(let k=seg.length-1;k>0;k--) chosen[k-1]=back[k][chosen[k]];
+    for(let k=0;k<seg.length;k++){ midi[i+k]=seg[k][chosen[k]].midi; voiced[i+k]=1; }
+    i=j;
+  }
+  return {voiced,midi};
+}
+
+// ---------- 抓出「一看就知道是誤判」的八度跳動，把那一段搬回正確的八度 ----------
+// 真的誤判有三個真人做不出來的指紋，三個同時成立才動它：
+//   1. 跳的量剛好是整數個八度（誤判是數學上抓到諧波，會精準到差不多 0 音分；
+//      真人就算唱八度大跳也會差個幾十音分）
+//   2. 只撐一瞬間（喉嚨物理上做不到幾十毫秒內跳上去又跳回來，就算做得到耳朵也聽不出那是一個音）
+//   3. 撐完之後又回到原本那個音
+// 約德爾唱法雖然是真的八度大跳，但每個音都會唱到聽得見的長度，第 2 點就過不了，所以不會被動到。
+// 修的方式是整段搬回去、不是刪掉，抖音之類的細節都保留。
+function repairOctaveJumps(voiced,midi,hopSec){
+  const n=midi.length;
+  const maxIslandFrames=Math.max(1,Math.round(0.12/hopSec)); // 撐不到 120 毫秒才算「一瞬間」
+  const tolSemi=0.6;      // 離「剛好整數個八度」可以差到 60 音分
+  const sameTolSemi=1.5;  // 前後差在 1.5 個半音內就算「回到同一個音」
+  const spreadSemi=1.5;   // 島自己的音高上下擺動容許範圍（留給抖音）
+  let fixed=0;
+  let i=0;
+  while(i<n){
+    if(!voiced[i]){ i++; continue; }
+    let segEnd=i; while(segEnd<n&&voiced[segEnd]) segEnd++;
+
+    // 片段開頭就已經跳掉的情況（誤判最容易發生在音的頭尾，前面沒有格子可以比對）
+    let e0=i; while(e0<segEnd&&Math.abs(midi[e0]-midi[i])<=spreadSemi) e0++;
+    if(e0<segEnd&&e0-i<=maxIslandFrames){
+      const jump=midi[i]-midi[e0];
+      const oct=Math.round(jump/12);
+      if(oct!==0&&Math.abs(jump-oct*12)<=tolSemi){
+        for(let x=i;x<e0;x++) midi[x]-=oct*12;
+        fixed++;
+      }
+    }
+
+    for(let k=i+1;k<segEnd;k++){
+      const jump=midi[k]-midi[k-1];
+      const oct=Math.round(jump/12);
+      if(oct===0) continue;                          // 根本沒跳八度
+      if(Math.abs(jump-oct*12)>tolSemi) continue;    // 不夠接近「剛好整數個八度」＝比較像真的旋律大跳
+      let e=k; while(e<segEnd&&Math.abs(midi[e]-midi[k])<=spreadSemi) e++;
+      if(e-k>maxIslandFrames) continue;              // 撐得夠久＝聽得出來的音，當真的處理（約德爾走這條）
+      const returns=(e<segEnd)&&Math.abs(midi[e]-midi[k-1])<=sameTolSemi;
+      const runsToEnd=(e>=segEnd);                   // 跳在片段最後：也是誤判好發位置
+      if(!returns&&!runsToEnd) continue;             // 跳過去就待在那＝真的換音了，不要動
+      for(let x=k;x<e;x++) midi[x]-=oct*12;
+      fixed++;
+      k=e-1;
+    }
+    i=segEnd;
+  }
+  return fixed;
+}
+
+// 另一種誤判：起音、收音、子音那一瞬間波形還沒穩定，偵測結果會亂跳到不成調的位置
+// （不見得剛好是整數個八度，所以上面那關抓不到）。
+// 真人唱歌不會有「短到聽不見、又跳很遠」的音，所以短於 60 毫秒、又跟前後都差 3 個半音以上的
+// 孤島，一律當雜訊，用前後內插補起來。約德爾一個音 150 毫秒以上，不會被掃到。
+function removeShortOutliers(voiced,midi,hopSec){
+  const n=midi.length;
+  const maxLen=Math.max(1,Math.round(0.06/hopSec));
+  let removed=0, i=0;
+  while(i<n){
+    if(!voiced[i]){ i++; continue; }
+    let segEnd=i; while(segEnd<n&&voiced[segEnd]) segEnd++;
+    let k=i;
+    while(k<segEnd){
+      let e=k; while(e<segEnd&&Math.abs(midi[e]-midi[k])<=1.5) e++;
+      const len=e-k;
+      if(len<=maxLen){
+        if(k>i&&e<segEnd){
+          // 夾在中間：用前後內插補起來
+          const before=midi[k-1], after=midi[e];
+          if(Math.abs(midi[k]-before)>3&&Math.abs(midi[k]-after)>3){
+            for(let x=k;x<e;x++) midi[x]=before+(after-before)*((x-k+1)/(len+1));
+            removed++;
+          }
+        }else if(k===i&&e<segEnd){
+          // 卡在起音那一瞬間：只有後面可以比，差太多就整段丟掉（等於這個音晚一點點開始）
+          if(Math.abs(midi[k]-midi[e])>3){
+            for(let x=k;x<e;x++) voiced[x]=0;
+            removed++;
+          }
+        }else if(e===segEnd&&k>i){
+          // 卡在收音那一瞬間：只有前面可以比，差太多就整段丟掉（等於這個音早一點點結束）
+          if(Math.abs(midi[k]-midi[k-1])>3){
+            for(let x=k;x<e;x++) voiced[x]=0;
+            removed++;
+          }
+        }
+      }
+      k=e;
+    }
+    i=segEnd;
+  }
+  return removed;
+}
+
+// ---------- 錄音 ----------
+function clearAudioElement(id){
+  const audio=document.getElementById(id);
+  if(!audio) return;
+  try{ audio.pause(); }catch(e){}
+  const src=audio.getAttribute("src");
+  if(src&&src.startsWith("blob:")) URL.revokeObjectURL(src);
+  audio.removeAttribute("src");
+  audio.load();
+}
+
+function invalidateSynthOutputs(){
+  const generation=++synthesisGeneration;
+  synthBuffers={sawtooth:null,sine:null,square:null};
+  synthBlobs={sawtooth:null,sine:null,square:null};
+  for(const type of WAVE_TYPES){
+    clearAudioElement("synth_"+type);
+    document.getElementById("dl_"+type).disabled=true;
+  }
+  document.getElementById("playMix").disabled=true;
+  document.getElementById("downloadMix").disabled=true;
+  return generation;
+}
+
+function resetForNewRecording(){
+  const session=++recordingGeneration;
+  stopAllPlayback();
+  invalidateSynthOutputs();
+  originalBuffer=null;
+  monoData=null;
+  rawFrames=null;
+  curFreqCurve=null;
+  curGainCurve=null;
+  curDuration=0;
+  liveAnalyser=null;
+  liveBuf=null;
+  liveBlobs=[];
+  liveCur=null;
+  clearAudioElement("origAudio");
+  document.getElementById("playRow").style.display="none";
+  document.getElementById("mixer").style.display="none";
+  document.getElementById("mixStatus").textContent="錄音並完成合成後，就能使用 Mixer。";
+  document.getElementById("timer").textContent="0.0 秒";
+  document.getElementById("noteBig").textContent="—";
+  document.getElementById("freqTxt").textContent="— Hz";
+  document.getElementById("centsTxt").textContent="—";
+  document.getElementById("centsFill").style.width="0%";
+  document.getElementById("clarityTxt").textContent="把握度 —";
+  ctx.clearRect(0,0,cv.width/devicePixelRatio,cv.height/devicePixelRatio);
+  return session;
+}
+
+async function toggleRec(){
+  if(recordingStarting) return;
+  if(recording){ stopRec(); return; }
+  const session=resetForNewRecording();
+  const btn=document.getElementById("btnRec");
+  const status=document.getElementById("status");
+  recordingStarting=true;
+  btn.disabled=true;
+  let nextAC=null, nextStream=null;
+  try{
+    nextAC=new (window.AudioContext||window.webkitAudioContext)();
+    await nextAC.resume();
+    if(session!==recordingGeneration){ await nextAC.close(); return; }
+    nextStream=await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    if(session!==recordingGeneration){
+      nextStream.getTracks().forEach(track=>track.stop());
+      await nextAC.close();
+      return;
+    }
+    recAC=nextAC;
+    recStream=nextStream;
+    chunks=[];
+    mediaRecorder=new MediaRecorder(recStream);
+    mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+    mediaRecorder.onstop=()=>onRecStop(session);
+    mediaRecorder.start();
+
+    liveAnalyser=recAC.createAnalyser(); liveAnalyser.fftSize=4096;
+    liveBuf=new Float32Array(liveAnalyser.fftSize);
+    recAC.createMediaStreamSource(recStream).connect(liveAnalyser);
+    liveT0=recAC.currentTime; liveBlobs=[]; liveCur=null; liveViewLo=45; liveViewHi=76;
+
+    recording=true; recStartTime=performance.now();
+    btn.textContent="⏹ 停止錄音"; btn.classList.add("on");
+    btn.disabled=false;
+    status.textContent="錄音中……最多錄 15 秒，滿了會自動停";
+    timerInt=setInterval(()=>{
+      const t=(performance.now()-recStartTime)/1000;
+      document.getElementById("timer").textContent=t.toFixed(1)+" 秒";
+      if(t>=15) stopRec();
+    },100);
+  }catch(e){
+    if(nextStream) nextStream.getTracks().forEach(track=>track.stop());
+    if(nextAC&&nextAC.state!=="closed") try{ await nextAC.close(); }catch(closeError){}
+    if(session===recordingGeneration){
+      btn.disabled=false;
+      status.textContent="抓不到麥克風，檢查瀏覽器有沒有擋，或換 Chrome 開。("+e+")";
+    }
+  }finally{
+    recordingStarting=false;
+  }
+}
+function stopRec(){
+  if(!recording) return;
+  recording=false;
+  clearInterval(timerInt);
+  const btn=document.getElementById("btnRec");
+  btn.textContent="🎙️ 開始錄音";
+  btn.classList.remove("on");
+  btn.disabled=true;
+  mediaRecorder.stop();
+  recStream.getTracks().forEach(t=>t.stop());
+}
+async function onRecStop(session){
+  const status=document.getElementById("status");
+  const btn=document.getElementById("btnRec");
+  const dur=(performance.now()-recStartTime)/1000;
+  if(dur<2){
+    if(session===recordingGeneration){
+      status.textContent="錄得太短，再錄一次，建議 10–15 秒。";
+      btn.disabled=false;
+    }
+    return;
+  }
+  if(session!==recordingGeneration) return;
+  status.textContent="分析中，請稍等幾秒……";
+  const blob=new Blob(chunks,{type:mediaRecorder.mimeType||"audio/webm"});
+  const arrBuf=await blob.arrayBuffer();
+  if(session!==recordingGeneration) return;
+  let decoded;
+  try{
+    decoded=await recAC.decodeAudioData(arrBuf);
+  }catch(e){
+    if(session===recordingGeneration){
+      status.textContent="這段錄音沒辦法解碼，再錄一次看看。";
+      btn.disabled=false;
+    }
+    return;
+  }
+  if(session!==recordingGeneration) return;
+  sampleRate=decoded.sampleRate;
+  originalBuffer=decoded;
+  if(decoded.numberOfChannels>1){
+    const a=decoded.getChannelData(0), b=decoded.getChannelData(1);
+    monoData=new Float32Array(a.length);
+    for(let i=0;i<a.length;i++) monoData[i]=(a[i]+b[i])/2;
+  }else{
+    monoData=decoded.getChannelData(0).slice();
+  }
+  document.getElementById("origAudio").src=URL.createObjectURL(blob);
+
+  // 讓瀏覽器先畫出「分析中」文字，再做比較重的運算
+  await new Promise(r=>setTimeout(r,30));
+  if(session!==recordingGeneration) return;
+  await analyze(session);
+  if(session===recordingGeneration) btn.disabled=false;
+}
+
+// ---------- 逐格分析整段錄音（比較吃運算，只在錄完做一次） ----------
+async function analyze(session){
+  if(session!==recordingGeneration||!monoData) return;
+  const status=document.getElementById("status");
+  const data=monoData, rate=sampleRate;
+  // 4096 是為了讓頻譜在低頻也夠細（男聲基頻可能只有 70–90Hz）；
+  // 自相關本身有自己的上限，用 4096 跟 2048 算出來一樣，所以不影響音高的時間解析度。
+  const windowSize=4096;
+  const hop=Math.round(rate*0.01);
+  hopSizeSec=hop/rate;
+  const frames=[];
+  for(let pos=0; pos+windowSize<=data.length; pos+=hop){
+    const win=data.subarray(pos,pos+windowSize);
+    const r=detectPitchCandidates(win,rate);
+    frames.push({rms:r.rms,candidates:r.candidates});
+  }
+  if(session!==recordingGeneration) return;
+  rawFrames=frames;
+  status.textContent="分析完成，共 "+frames.length+" 格，"+(data.length/rate).toFixed(1)+" 秒，合成中……";
+  document.getElementById("playRow").style.display="flex";
+  await resynthAll();
+}
+
+// ---------- 用目前的門檻/平滑設定，重新算出音高曲線＋音量曲線，並重新合成 ----------
+function buildCurves(){
+  const gate=parseFloat(document.getElementById("gate").value);
+  const smoothSteps=parseInt(document.getElementById("smooth").value,10); // 0~3
+  const n=rawFrames.length;
+  // 動態規劃挑一條最連貫的音高路徑（避免大聲唱的時候突然跳一兩個八度，見 dpChoosePitch 說明）
+  const {voiced,midi}=dpChoosePitch(rawFrames,gate);
+  // 再掃一次，把漏網、一看就知道是誤判的八度跳動搬回正確的八度
+  lastOctFixCount=0;
+  if(document.getElementById("fixOct").checked){
+    lastOctFixCount=repairOctaveJumps(voiced,midi,hopSizeSec)
+                   +removeShortOutliers(voiced,midi,hopSizeSec);
+  }
+  // 補短暫的斷音（<=6 格 ≈ 60ms），在兩段有聲音之間用內插音高填起來
+  const maxGap=6;
+  let i=0;
+  while(i<n){
+    if(!voiced[i]){
+      let j=i; while(j<n && !voiced[j]) j++;
+      const gapLen=j-i;
+      if(i>0 && j<n && gapLen<=maxGap){
+        const m0=midi[i-1], m1=midi[j];
+        for(let k=i;k<j;k++){ midi[k]=m0+(m1-m0)*((k-i+1)/(gapLen+1)); voiced[k]=1; }
+      }
+      i=j;
+    }else i++;
+  }
+  // 額外平滑（滑動平均，視窗大小依滑桿 0/3/5/7）——動態規劃已經處理掉八度跳動，
+  // 這一步只負責讓線更滑順，太高會連抖音一起磨掉
+  const win=smoothSteps===0?1:smoothSteps*2+1;
+  const midiSmooth=midi.slice();
+  if(win>1){
+    const half=(win-1)/2;
+    for(let k=0;k<n;k++){
+      if(!voiced[k]) continue;
+      let s=0,c=0;
+      for(let d=-half;d<=half;d++){
+        const idx=k+d;
+        if(idx>=0&&idx<n&&voiced[idx]){ s+=midi[idx]; c++; }
+      }
+      midiSmooth[k]=c?s/c:midi[k];
+    }
+  }
+  // 音量：用 rms 做壓縮映射，讓小聲的段落也聽得見一點，但強弱對比還在
+  let peak=0.0001;
+  for(let k=0;k<n;k++) if(voiced[k]&&rawFrames[k].rms>peak) peak=rawFrames[k].rms;
+  const gainRaw=new Float32Array(n);
+  for(let k=0;k<n;k++) gainRaw[k]=voiced[k]?Math.pow(Math.min(1,rawFrames[k].rms/peak),0.6)*0.85:0;
+  // 音量做一點點平滑，避免爆音
+  const gainSmooth=gainRaw.slice();
+  for(let k=1;k<n-1;k++) gainSmooth[k]=(gainRaw[k-1]+gainRaw[k]*2+gainRaw[k+1])/4;
+  if(n>0){ gainSmooth[0]=0; gainSmooth[n-1]=0; }
+
+  // 沒聲音的格子，音高就沿用前一個有效值，避免曲線出現 0Hz
+  const freqCurve=new Float32Array(Math.max(2,n));
+  let lastMidi=60;
+  for(let k=0;k<n;k++){
+    if(voiced[k]) lastMidi=midiSmooth[k];
+    freqCurve[k]=midiToFreq(lastMidi);
+  }
+  if(n<2){ freqCurve[0]=freqCurve[0]||220; freqCurve[1]=freqCurve[0]; }
+
+  curFreqCurve=freqCurve;
+  curGainCurve=n>=2?gainSmooth:new Float32Array([0,0]);
+  curDuration=Math.max(0.05,(n-1)*hopSizeSec);
+  return {voiced,midiSmooth,gainSmooth,n};
+}
+
+// ---------- 用 OfflineAudioContext 合成一種音色，回傳算好的 AudioBuffer ----------
+async function renderOffline(waveType){
+  const octx=new OfflineAudioContext(1,Math.max(1,Math.ceil(curDuration*sampleRate)),sampleRate);
+  const osc=octx.createOscillator();
+  osc.type=waveType;
+  const filter=octx.createBiquadFilter();
+  filter.type="lowpass";
+  filter.frequency.value=waveType==="sine"?9000:waveType==="square"?3200:2400;
+  const gainNode=octx.createGain();
+  const comp=octx.createDynamicsCompressor();
+  osc.frequency.setValueCurveAtTime(curFreqCurve,0,curDuration);
+  gainNode.gain.setValueCurveAtTime(curGainCurve,0,curDuration);
+  osc.connect(filter); filter.connect(gainNode); gainNode.connect(comp); comp.connect(octx.destination);
+  osc.start(0); osc.stop(curDuration);
+  return octx.startRendering();
+}
+
+// ---------- 用目前的門檻/平滑設定，重新算出曲線，一次合成三種音色 ----------
+async function resynthAll(){
+  if(!rawFrames) return;
+  stopAllPlayback();
+  const generation=invalidateSynthOutputs();
+  const status=document.getElementById("status");
+  const {voiced,midiSmooth,gainSmooth,n}=buildCurves();
+  drawRoll(voiced,midiSmooth,gainSmooth,n);
+
+  document.getElementById("mixStatus").textContent="正在更新 Mixer 的三種樂器版本……";
+  status.textContent="合成三種音色中……";
+  const nextBuffers={}, nextBlobs={};
+  for(const type of WAVE_TYPES){
+    let rendered;
+    try{ rendered=await renderOffline(type); }
+    catch(e){
+      if(generation===synthesisGeneration) status.textContent="合成失敗（"+type+"）："+e;
+      return;
+    }
+    if(generation!==synthesisGeneration) return;
+    nextBuffers[type]=rendered;
+    nextBlobs[type]=bufferToWav(rendered);
+  }
+  if(generation!==synthesisGeneration) return;
+  synthBuffers=nextBuffers;
+  synthBlobs=nextBlobs;
+  for(const type of WAVE_TYPES){
+    document.getElementById("synth_"+type).src=URL.createObjectURL(synthBlobs[type]);
+    document.getElementById("dl_"+type).disabled=false;
+  }
+  const mixReady=!!originalBuffer&&WAVE_TYPES.every(type=>!!synthBuffers[type]);
+  document.getElementById("mixer").style.display="block";
+  document.getElementById("playMix").disabled=!mixReady;
+  document.getElementById("downloadMix").disabled=!mixReady;
+  document.getElementById("mixStatus").textContent=mixReady
+    ?"Mixer 已就緒：同步播放與下載都會使用目前的樂器和兩軌音量。"
+    :"找不到可混音的原音，請重新錄製一次。";
+  updateMixLevels();
+  status.textContent="合成完成，三種音色可分開比較，也可以到 Mixer 與原音同步播放。"
+    +(lastOctFixCount>0?"（修掉了 "+lastOctFixCount+" 處誤判的八度跳動）":"");
+}
+
+function downloadWav(type){
+  const blob=synthBlobs[type];
+  if(!blob) return;
+  const names={sawtooth:"鋸齒喇叭",sine:"正弦波",square:"方波喇叭"};
+  const a=document.createElement("a");
+  const url=URL.createObjectURL(blob);
+  a.href=url;
+  a.download="純音高_"+(names[type]||type)+".wav";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function mixSettings(){
+  return {
+    type:document.getElementById("mixType").value,
+    voice:+document.getElementById("mixVoice").value/100,
+    instrument:+document.getElementById("mixInstrument").value/100
+  };
+}
+
+function updateMixLevels(){
+  const s=mixSettings();
+  document.getElementById("mixVoiceValue").textContent=Math.round(s.voice*100);
+  document.getElementById("mixInstrumentValue").textContent=Math.round(s.instrument*100);
+  if(mixAC&&mixVoiceGain&&mixInstrumentGain){
+    const now=mixAC.currentTime;
+    mixVoiceGain.gain.setTargetAtTime(s.voice,now,0.01);
+    mixInstrumentGain.gain.setTargetAtTime(s.instrument,now,0.01);
+  }
+}
+
+function stopHtmlPlayback(){
+  for(const id of ["origAudio","synth_sawtooth","synth_sine","synth_square"]){
+    const audio=document.getElementById(id);
+    if(audio&&!audio.paused) audio.pause();
+  }
+}
+
+function stopMixPlayback(){
+  const hadSources=mixSources.length>0;
+  mixPlaybackToken++;
+  for(const source of mixSources){
+    try{ source.stop(); }catch(e){}
+    try{ source.disconnect(); }catch(e){}
+  }
+  mixSources=[];
+  mixVoiceGain=null;
+  mixInstrumentGain=null;
+  if(hadSources) document.getElementById("mixStatus").textContent="同步播放已停止。";
+}
+
+function stopAllPlayback(){
+  stopHtmlPlayback();
+  stopMixPlayback();
+}
+
+async function playMixed(){
+  const s=mixSettings();
+  const voiceBuffer=originalBuffer, instrumentBuffer=synthBuffers[s.type];
+  const generation=synthesisGeneration;
+  if(!voiceBuffer||!instrumentBuffer) return;
+  stopAllPlayback();
+  const token=++mixPlaybackToken;
+  if(!mixAC) mixAC=new (window.AudioContext||window.webkitAudioContext)();
+  await mixAC.resume();
+  if(token!==mixPlaybackToken||generation!==synthesisGeneration||
+     originalBuffer!==voiceBuffer||synthBuffers[s.type]!==instrumentBuffer) return;
+
+  const voice=mixAC.createBufferSource();
+  const instrument=mixAC.createBufferSource();
+  mixVoiceGain=mixAC.createGain();
+  mixInstrumentGain=mixAC.createGain();
+  const limiter=mixAC.createDynamicsCompressor();
+  limiter.threshold.value=-3;
+  limiter.knee.value=6;
+  limiter.ratio.value=12;
+  limiter.attack.value=0.003;
+  limiter.release.value=0.15;
+  voice.buffer=voiceBuffer;
+  instrument.buffer=instrumentBuffer;
+  mixVoiceGain.gain.value=s.voice;
+  mixInstrumentGain.gain.value=s.instrument;
+  voice.connect(mixVoiceGain).connect(limiter);
+  instrument.connect(mixInstrumentGain).connect(limiter);
+  limiter.connect(mixAC.destination);
+  mixSources=[voice,instrument];
+  let ended=0;
+  const handleEnded=()=>{
+    if(token!==mixPlaybackToken) return;
+    ended++;
+    if(ended<2) return;
+    mixSources=[];
+    mixVoiceGain=null;
+    mixInstrumentGain=null;
+    document.getElementById("mixStatus").textContent="同步播放完成。";
+  };
+  voice.onended=handleEnded;
+  instrument.onended=handleEnded;
+
+  const t0=mixAC.currentTime+0.05;
+  voice.start(t0);
+  instrument.start(t0);
+  document.getElementById("mixStatus").textContent="同步播放中；可以直接拖動兩條音量拉霸。";
+}
+
+async function renderMixedBuffer(settings,voiceTrack,instrumentTrack){
+  const s=settings||mixSettings();
+  voiceTrack=voiceTrack||originalBuffer;
+  instrumentTrack=instrumentTrack||synthBuffers[s.type];
+  if(!voiceTrack||!instrumentTrack) return null;
+  const rate=voiceTrack.sampleRate;
+  const channels=Math.max(1,voiceTrack.numberOfChannels);
+  const duration=Math.max(voiceTrack.duration,instrumentTrack.duration);
+  const octx=new OfflineAudioContext(channels,Math.ceil(duration*rate),rate);
+  const voice=octx.createBufferSource();
+  const instrument=octx.createBufferSource();
+  const voiceGain=octx.createGain();
+  const instrumentGain=octx.createGain();
+  const limiter=octx.createDynamicsCompressor();
+  limiter.threshold.value=-3;
+  limiter.knee.value=6;
+  limiter.ratio.value=12;
+  limiter.attack.value=0.003;
+  limiter.release.value=0.15;
+  voice.buffer=voiceTrack;
+  instrument.buffer=instrumentTrack;
+  voiceGain.gain.value=s.voice;
+  instrumentGain.gain.value=s.instrument;
+  voice.connect(voiceGain).connect(limiter);
+  instrument.connect(instrumentGain).connect(limiter);
+  limiter.connect(octx.destination);
+  voice.start(0);
+  instrument.start(0);
+  return octx.startRendering();
+}
+
+async function downloadMixedWav(){
+  const btn=document.getElementById("downloadMix");
+  const status=document.getElementById("mixStatus");
+  const settings=mixSettings();
+  const voiceTrack=originalBuffer, instrumentTrack=synthBuffers[settings.type];
+  const generation=synthesisGeneration;
+  if(!voiceTrack||!instrumentTrack) return;
+  btn.disabled=true;
+  status.textContent="正在依目前 Mixer 比例製作混音 WAV……";
+  try{
+    const rendered=await renderMixedBuffer(settings,voiceTrack,instrumentTrack);
+    if(generation!==synthesisGeneration||originalBuffer!==voiceTrack||
+       synthBuffers[settings.type]!==instrumentTrack) return;
+    if(!rendered) throw new Error("混音資料尚未準備完成");
+    const blob=bufferToWav(rendered);
+    const url=URL.createObjectURL(blob);
+    const names={sawtooth:"鋸齒喇叭",sine:"正弦波",square:"方波喇叭"};
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="原音與"+names[settings.type]+"_同步混音.wav";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    status.textContent="混音 WAV 已產生並開始下載。";
+  }catch(e){
+    if(generation===synthesisGeneration) status.textContent="混音下載失敗："+e.message;
+  }finally{
+    if(generation===synthesisGeneration&&originalBuffer===voiceTrack&&
+       synthBuffers[settings.type]===instrumentTrack) btn.disabled=false;
+  }
+}
+
+// 個別播放器仍維持互斥；Mixer 則使用上方兩個 AudioBufferSourceNode 同步啟動。
+function setupExclusivePlayback(){
+  const ids=["origAudio","synth_sawtooth","synth_sine","synth_square"];
+  const audios=ids.map(id=>document.getElementById(id));
+  audios.forEach(audio=>{
+    audio.addEventListener("play",()=>{
+      stopMixPlayback();
+      audios.forEach(other=>{ if(other!==audio&&!other.paused) other.pause(); });
+    });
+  });
+}
+
+// AudioBuffer -> 16bit PCM WAV
+function bufferToWav(abuffer){
+  const numCh=abuffer.numberOfChannels;
+  const length=abuffer.length*numCh*2+44;
+  const buf=new ArrayBuffer(length);
+  const view=new DataView(buf);
+  let pos=0;
+  function u16(d){ view.setUint16(pos,d,true); pos+=2; }
+  function u32(d){ view.setUint32(pos,d,true); pos+=4; }
+  u32(0x46464952); u32(length-8); u32(0x45564157);
+  u32(0x20746d66); u32(16); u16(1); u16(numCh);
+  u32(abuffer.sampleRate); u32(abuffer.sampleRate*2*numCh);
+  u16(numCh*2); u16(16);
+  u32(0x61746164); u32(length-pos-4);
+  const chans=[]; for(let i=0;i<numCh;i++) chans.push(abuffer.getChannelData(i));
+  let offset=0;
+  while(pos<length){
+    for(let i=0;i<numCh;i++){
+      let s=Math.max(-1,Math.min(1,chans[i][offset]));
+      s=s<0?s*0x8000:s*0x7FFF;
+      view.setInt16(pos,s,true); pos+=2;
+    }
+    offset++;
+  }
+  return new Blob([view],{type:"audio/wav"});
+}
+
+// ---------- 畫面：整段的音高走勢，線的粗細/亮度＝音量 ----------
+function midiToY(m,h,lo,hi){ return h-((m-lo)/(hi-lo))*h; }
+function drawRoll(voiced,midiArr,gainArr,n){
+  const w=cv.width/devicePixelRatio, h=cv.height/devicePixelRatio;
+  ctx.clearRect(0,0,w,h);
+  if(!n){ return; }
+  let lo=1000,hi=-1000;
+  for(let i=0;i<n;i++) if(voiced[i]){ lo=Math.min(lo,midiArr[i]); hi=Math.max(hi,midiArr[i]); }
+  if(lo>hi){ lo=55; hi=75; }
+  lo=Math.floor(lo)-2; hi=Math.ceil(hi)+2;
+
+  for(let m=lo;m<=hi;m++){
+    const y=midiToY(m,h,lo,hi), y2=midiToY(m+1,h,lo,hi);
+    if(BLACK[((m%12)+12)%12]){ ctx.fillStyle="#191b20"; ctx.fillRect(46,y2,w-46,y-y2); }
+    ctx.strokeStyle=(m%12===0)?"#3a3e48":"#23262d"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(46,y+0.5); ctx.lineTo(w,y+0.5); ctx.stroke();
+  }
+  ctx.fillStyle="#1c1e24"; ctx.fillRect(0,0,46,h);
+  const rowH=Math.abs(midiToY(60,h,lo,hi)-midiToY(61,h,lo,hi));
+  for(let m=lo;m<=hi;m++){
+    if(rowH<11&&m%12!==0) continue;
+    const y=midiToY(m,h,lo,hi), y2=midiToY(m+1,h,lo,hi);
+    ctx.fillStyle=(m%12===0)?"#a8a59d":"#5a5e68"; ctx.font=(m%12===0?"bold ":"")+"11px sans-serif";
+    ctx.textBaseline="middle"; ctx.fillText(noteName(m),7,(y+y2)/2);
+  }
+
+  const X=i=>46+(w-46)*(i/Math.max(1,n-1));
+  let started=false;
+  for(let i=0;i<n;i++){
+    if(!voiced[i]){ started=false; continue; }
+    const x=X(i), y=midiToY(midiArr[i],h,lo,hi);
+    const gain=gainArr[i];
+    ctx.strokeStyle=`rgba(240,184,64,${0.25+gain*0.75})`;
+    ctx.lineWidth=1+gain*3.5;
+    if(!started){ ctx.beginPath(); ctx.moveTo(x,y); started=true; }
+    else{ ctx.lineTo(x,y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x,y); }
+  }
+}
+
+// ---------- 錄音當下即時顯示（音名/頻率/音分＋滾動的音高走勢，跟音高偵測工具同一套畫法） ----------
+function liveMidiToY(m,h){ return h-((m-liveViewLo)/(liveViewHi-liveViewLo))*h; }
+function liveCloseNote(){
+  if(liveCur&&liveCur.end-liveCur.start>=0.07){
+    let s=0; for(const p of liveCur.pts) s+=p.midi;
+    liveCur.avg=s/liveCur.pts.length;
+    liveBlobs.push(liveCur);
+    if(liveBlobs.length>400) liveBlobs.shift();
+  }
+  liveCur=null;
+}
+function liveFeed(t,midi,ok){
+  if(!ok){ if(liveCur&&t-liveCur.end>0.09) liveCloseNote(); return; }
+  if(liveCur&&t-liveCur.end<0.13&&Math.abs(midi-liveCur.ref)<1.1){
+    liveCur.pts.push({t,midi}); liveCur.end=t; liveCur.ref=liveCur.ref*0.85+midi*0.15;
+  }else{
+    liveCloseNote();
+    liveCur={start:t,end:t,ref:midi,pts:[{t,midi}]};
+  }
+}
+function updateLiveReadout(res,midi,ok){
+  const nb=document.getElementById("noteBig"), ft=document.getElementById("freqTxt");
+  const cf=document.getElementById("centsFill"), ctxt=document.getElementById("centsTxt");
+  const cl=document.getElementById("clarityTxt");
+  if(ok){
+    const cents=Math.round((midi-Math.round(midi))*100);
+    nb.textContent=noteName(midi);
+    ft.textContent=res.f.toFixed(1)+" Hz";
+    ctxt.textContent=(cents>0?"+":"")+cents+" 音分";
+    const frac=Math.max(-1,Math.min(1,cents/50));
+    cf.style.left=(frac<0?50+frac*50:50)+"%";
+    cf.style.width=Math.abs(frac)*50+"%";
+    cf.style.background=Math.abs(cents)<10?"#4a8f6a":Math.abs(cents)<25?"#9a8a3a":"#a8563a";
+    cl.textContent="把握度 "+Math.round(res.clarity*100)+"%";
+  }else{
+    nb.textContent="—"; ft.textContent="— Hz"; ctxt.textContent="—"; cf.style.width="0%";
+    cl.textContent="把握度 —";
+  }
+}
+function drawLive(){
+  const w=cv.width/devicePixelRatio, h=cv.height/devicePixelRatio;
+  const pps=110;
+  const now=recAC?recAC.currentTime-liveT0:0;
+  ctx.clearRect(0,0,w,h);
+  for(let m=Math.floor(liveViewLo);m<=Math.ceil(liveViewHi);m++){
+    const y=liveMidiToY(m,h), y2=liveMidiToY(m+1,h);
+    if(BLACK[((m%12)+12)%12]){ ctx.fillStyle="#191b20"; ctx.fillRect(46,y2,w-46,y-y2); }
+    ctx.strokeStyle=(m%12===0)?"#3a3e48":"#23262d"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(46,y+0.5); ctx.lineTo(w,y+0.5); ctx.stroke();
+  }
+  ctx.fillStyle="#1c1e24"; ctx.fillRect(0,0,46,h);
+  ctx.strokeStyle="#2e313a"; ctx.beginPath(); ctx.moveTo(46.5,0); ctx.lineTo(46.5,h); ctx.stroke();
+  const rowH=Math.abs(liveMidiToY(60,h)-liveMidiToY(61,h));
+  for(let m=Math.floor(liveViewLo);m<=Math.ceil(liveViewHi);m++){
+    if(rowH<11&&m%12!==0) continue;
+    const y=liveMidiToY(m,h), y2=liveMidiToY(m+1,h);
+    ctx.fillStyle=(m%12===0)?"#a8a59d":"#5a5e68"; ctx.font=(m%12===0?"bold ":"")+"11px sans-serif";
+    ctx.textBaseline="middle"; ctx.fillText(noteName(m),7,(y+y2)/2);
+  }
+  const X=t=>w-(now-t)*pps;
+  const all=liveCur?liveBlobs.concat([liveCur]):liveBlobs;
+  for(const b of all){
+    const x1=X(b.start), x2=X(b.end);
+    if(x2<46) continue;
+    const avg=b.avg!==undefined?b.avg:b.ref;
+    const yTop=liveMidiToY(avg+0.42,h), yBot=liveMidiToY(avg-0.42,h);
+    const live=(b===liveCur);
+    ctx.fillStyle=live?"rgba(240,184,64,.30)":"rgba(190,180,160,.20)";
+    ctx.strokeStyle=live?"rgba(240,184,64,.85)":"rgba(200,192,175,.5)";
+    ctx.lineWidth=1;
+    const rx=Math.max(46,x1), rw=Math.max(2,x2-Math.max(46,x1));
+    roundRect(rx,yTop,rw,yBot-yTop,5); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); let first=true;
+    for(const p of b.pts){
+      const x=X(p.t); if(x<46) continue;
+      const y=liveMidiToY(p.midi,h);
+      if(first){ ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=live?"#ffd76b":"#cfc6b0"; ctx.lineWidth=1.6; ctx.stroke();
+  }
+  ctx.strokeStyle="rgba(240,184,64,.5)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(w-0.5,0); ctx.lineTo(w-0.5,h); ctx.stroke();
+}
+function liveTick(){
+  requestAnimationFrame(liveTick);
+  if(!recording||!liveAnalyser) return;
+  liveAnalyser.getFloatTimeDomainData(liveBuf);
+  const res=detectPitchFrame(liveBuf,recAC.sampleRate);
+  const gate=parseFloat(document.getElementById("gate").value)||0.012;
+  const t=recAC.currentTime-liveT0;
+  const ok=res.f>0&&res.rms>=gate;
+  let midi=null;
+  if(ok){
+    midi=freqToMidi(res.f);
+    if(midi<liveViewLo+2) liveViewLo=Math.min(liveViewLo,midi-3);
+    if(midi>liveViewHi-2) liveViewHi=Math.max(liveViewHi,midi+3);
+  }
+  liveFeed(t,midi,ok);
+  updateLiveReadout(res,midi,ok);
+  drawLive();
+}
+
+resize();
+setupExclusivePlayback();
+liveTick();
+</script>
+</body>
+</html>
