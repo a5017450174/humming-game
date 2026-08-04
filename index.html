@@ -211,6 +211,17 @@ input[readonly]{font-size:13px;color:var(--dim)}
 .mix .val{font-size:12.5px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
 .mix input[type=range]{width:100%;accent-color:var(--gold);height:22px}
 .mix input[type=range].v{accent-color:var(--teal)}
+.mix input[type=range]:disabled{opacity:.35}
+#mixbox{display:none}
+#mixbox.on{display:block}
+
+/* ---------- 會張嘴的角色 ---------- */
+.faceslot{display:flex;justify-content:center;min-height:0}
+#facebox{display:none;width:100%}
+#facebox.on{display:flex;justify-content:center;
+  background:radial-gradient(58% 62% at 50% 46%,rgba(245,185,66,.11),transparent 70%)}
+#faceSvg{width:min(200px,44vw);height:auto;display:block;overflow:visible}
+#facebox.big #faceSvg{width:min(260px,58vw)}
 
 /* ---------- 即時房間 ---------- */
 .chat{max-height:190px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:4px 2px}
@@ -473,6 +484,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
   </div>
 
+  <div class="faceslot" id="fsRec"></div>
   <div class="roll"><canvas id="cvRec"></canvas><div class="lbl">你的音高</div></div>
   <div class="row" id="recbtns" style="display:none">
     <button class="btn go big" style="flex:1" onclick="stopRecord()">
@@ -496,6 +508,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <h2 id="checkhead"></h2>
   </div>
   <p class="dim">這就是<b>對方會聽到的聲音</b>。你自己都認不出來的話，他們一定猜不到——重錄比較快。</p>
+  <div class="faceslot" id="fsCheck"></div>
   <div class="roll"><canvas id="cvV"></canvas><div class="lbl">對方會看到這個</div></div>
   <div class="row" style="align-items:center">
     <button class="btn" onclick="playAll()">▶ 樂器版</button>
@@ -504,31 +517,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
   </div>
   <div class="tones" id="tonesC"></div>
 
-  <div class="shell">
-    <div class="core gold">
-      <div class="eyebrow"><i></i>一起播——原音和樂器版疊在一起</div>
-      <p class="dim">兩軌<b>同時從頭開始</b>，拉霸各自控音量。
-        把原音拉小、樂器版拉大，就聽得出來哪個字被你唱歪了。</p>
-      <div class="mix">
-        <label for="mixI">樂器版</label>
-        <input type="range" id="mixI" min="0" max="100" value="85" oninput="setMix()">
-        <span class="val" id="mixIv">85</span>
-        <label for="mixV">原音</label>
-        <input type="range" class="v" id="mixV" min="0" max="100" value="70" oninput="setMix()">
-        <span class="val" id="mixVv">70</span>
-      </div>
-      <div class="row">
-        <button class="btn go" style="flex:1" onclick="playTogether()">
-          ▶ 一起播 <span class="cir">⇉</span></button>
-        <button class="btn sm" onclick="stopAll()">■ 停</button>
-      </div>
-      <div class="row">
-        <button class="btn sm" id="dlmix" onclick="downloadMix()">下載這兩軌合起來的音檔</button>
-        <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
-      </div>
-      <p class="tiny" id="dlnote">合起來的檔案會照上面拉霸的音量比例，存成 WAV。</p>
-    </div>
-  </div>
+  <div class="mixslot" id="msCheck"></div>
 
   <div class="row">
     <button class="btn go" style="flex:1" onclick="keepAndNext()">
@@ -577,8 +566,8 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
   <div class="shell">
     <div class="core pad-s">
-      <p class="tiny">想讓大家聽你的<b>原音</b>：在通話裡直接放給他們聽，或自己再唱一次。
-        原音檔太大，塞不進代碼。</p>
+      <div class="eyebrow t"><i></i>你的原音</div>
+      <p class="tiny" id="clipnote">處理中…</p>
     </div>
   </div>
   <div class="row">
@@ -618,6 +607,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <div class="eyebrow t"><i></i><span id="gno">第 1 題</span></div>
     <h2>他唱了這個</h2>
   </div>
+  <div class="faceslot" id="fsGuess"></div>
   <div class="roll" id="wrapG"><canvas id="cvG"></canvas>
     <div class="lbl">壓住畫面＝從那裡開始聽</div></div>
   <div class="row" style="align-items:center">
@@ -644,11 +634,13 @@ input[readonly]{font-size:13px;color:var(--dim)}
       <div class="kv" id="kSongRow" style="display:none"><span>他唱的歌</span><b id="kSong"></b></div>
     </div>
   </div>
+  <div class="faceslot" id="fsRes"></div>
   <div class="roll"><canvas id="cvR"></canvas><div class="lbl">他唱的</div></div>
   <div class="row" style="align-items:center">
     <button class="btn" onclick="playAll()">▶ 再聽一次</button>
     <button class="btn sm" onclick="stopAll()">■ 停</button>
   </div>
+  <div class="mixslot" id="msRes"></div>
   <button class="btn go big wide" id="nextq" onclick="nextQ()">下一題 <span class="cir">→</span></button>
 </div>
 
@@ -716,6 +708,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
       <div id="livetimebox" style="display:none"></div>
       <p class="tiny" id="liveredo" style="display:none;color:var(--rose)">他重唱了，這是新的一次。</p>
     </div>
+    <div class="faceslot" id="fsLive"></div>
     <div class="roll" id="wrapLive"><canvas id="cvLive"></canvas>
       <div class="lbl" id="livelbl">跟著他一起長出來</div></div>
     <div class="row" style="align-items:center" id="livereplay">
@@ -763,6 +756,8 @@ input[readonly]{font-size:13px;color:var(--dim)}
         <div id="revboard"></div>
       </div>
     </div>
+    <div class="faceslot" id="fsReveal"></div>
+    <div class="mixslot" id="msReveal"></div>
     <div class="row" id="revdl" style="display:none">
       <button class="btn sm" onclick="downloadMix()">下載這次的音檔（樂器＋原音）</button>
       <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
@@ -773,6 +768,100 @@ input[readonly]{font-size:13px;color:var(--dim)}
   </div>
 
   <button class="btn sm" onclick="leaveRoom()" style="align-self:flex-start">離開房間</button>
+</div>
+
+<!-- ======== 混音台：只有一份，需要的畫面就把它搬過去 ========
+     出現在三個地方：自己試聽、猜完之後、房間揭曉。 -->
+<div id="mixbox">
+  <div class="shell">
+    <div class="core gold">
+      <div class="eyebrow"><i></i><span id="mixhead">一起播——原音和樂器版疊在一起</span></div>
+      <p class="dim" id="mixtip">兩軌<b>同時從頭開始</b>，拉霸各自控音量。</p>
+      <div class="mix">
+        <label for="mixI">樂器版</label>
+        <input type="range" id="mixI" min="0" max="100" value="85" oninput="setMix()">
+        <span class="val" id="mixIv">85</span>
+        <label for="mixV">原音</label>
+        <input type="range" class="v" id="mixV" min="0" max="100" value="70" oninput="setMix()">
+        <span class="val" id="mixVv">70</span>
+      </div>
+      <div class="row">
+        <button class="btn go" style="flex:1" id="mixgo" onclick="playTogether()">
+          ▶ 一起播 <span class="cir">⇉</span></button>
+        <button class="btn sm" onclick="stopAll()">■ 停</button>
+      </div>
+      <div class="row">
+        <button class="btn sm" id="mixonlyraw" onclick="playRaw()">▶ 只聽原音</button>
+        <button class="btn sm" onclick="playAll()">▶ 只聽樂器版</button>
+      </div>
+      <p class="tiny" id="mixstate" style="display:none"></p>
+      <div class="row" id="mixdl">
+        <button class="btn sm" id="dlmix" onclick="downloadMix()">下載這兩軌合起來的音檔</button>
+        <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
+      </div>
+      <p class="tiny" id="dlnote">合起來的檔案會照上面拉霸的音量比例，存成 WAV。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ======== 會跟著音量張嘴的角色 ========
+     整隻是畫出來的，沒有圖片檔——所以連結還是一條就能玩，
+     而且嘴巴可以無段跟著音量變。需要的畫面就把它搬過去。 -->
+<div id="facebox" aria-hidden="true">
+  <svg id="faceSvg" viewBox="0 22 220 186" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="fSkin" cx="38%" cy="30%" r="78%">
+        <stop offset="0%" stop-color="#ffd77a"/>
+        <stop offset="55%" stop-color="#f5b942"/>
+        <stop offset="100%" stop-color="#c9862a"/>
+      </radialGradient>
+      <radialGradient id="fMouth" cx="50%" cy="22%" r="85%">
+        <stop offset="0%" stop-color="#7d2b21"/>
+        <stop offset="100%" stop-color="#3a0f0c"/>
+      </radialGradient>
+      <filter id="fSoft" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="7"/>
+      </filter>
+    </defs>
+    <g id="fWaves" opacity="0" stroke="#f5b942" stroke-width="4" stroke-linecap="round" fill="none">
+      <path d="M188,118 q16,-16 0,-32"/>
+      <path d="M200,126 q26,-24 0,-48" opacity=".6"/>
+      <path d="M32,118 q-16,-16 0,-32"/>
+      <path d="M20,126 q-26,-24 0,-48" opacity=".6"/>
+    </g>
+    <g id="fBob">
+      <ellipse cx="110" cy="112" rx="86" ry="82" fill="#f5b942" opacity=".16" filter="url(#fSoft)"/>
+      <g id="fHead">
+        <ellipse cx="110" cy="112" rx="80" ry="76" fill="url(#fSkin)"/>
+        <!-- 五官：抬頭低頭的時候在頭裡面上下移動 -->
+        <g id="fFeat">
+          <ellipse cx="60" cy="140" rx="15" ry="9" fill="#e87a54" opacity=".32"/>
+          <ellipse cx="160" cy="140" rx="15" ry="9" fill="#e87a54" opacity=".32"/>
+          <g id="fBrows" stroke="#5c3c11" stroke-width="7" stroke-linecap="round" fill="none">
+            <path d="M62,74 q16,-9 32,-2"/>
+            <path d="M158,74 q-16,-9 -32,-2"/>
+          </g>
+          <g id="fEyesOpen">
+            <ellipse cx="78" cy="103" rx="11" ry="13" fill="#3a2409"/>
+            <ellipse cx="142" cy="103" rx="11" ry="13" fill="#3a2409"/>
+            <circle cx="82" cy="98" r="4" fill="#fff6e2" opacity=".9"/>
+            <circle cx="146" cy="98" r="4" fill="#fff6e2" opacity=".9"/>
+          </g>
+          <g id="fEyesShut" opacity="0" stroke="#3a2409" stroke-width="7" stroke-linecap="round" fill="none">
+            <path d="M66,104 q12,-11 24,0"/>
+            <path d="M130,104 q12,-11 24,0"/>
+          </g>
+          <path id="fMouthShut" d="M88,150 q22,15 44,0" fill="none"
+                stroke="#5c3c11" stroke-width="7" stroke-linecap="round"/>
+          <g id="fMouthOpen" opacity="0">
+            <ellipse id="fHole" cx="110" cy="150" rx="16" ry="10" fill="url(#fMouth)"/>
+            <path id="fTongue" d="M-13,0 q13,15 26,0 q-13,9 -26,0" fill="#e87a54"
+                  opacity="0" transform="translate(110,158)"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </svg>
 </div>
 
 <div id="fx" aria-hidden="true"><canvas id="fxcv"></canvas><div id="fxtxt"></div></div>
@@ -896,6 +985,9 @@ function show(id){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on"));
   $(id).classList.add("on");
   scrollTo({top:0,behavior:"instant"});
+  /* 角色和混音台都只有一份，會被搬來搬去。
+     先收起來，需要的畫面自己再叫一次 mountFace／mountMix。 */
+  mountFace(null); mountMix(null);
 }
 
 /* ============ 音色 ============
@@ -1157,7 +1249,11 @@ function rawClear(){
 function rawStart(){
   chunks=[];
   try{
-    mrec=new MediaRecorder(micStream);
+    /* 指定位元率：40k 對人聲夠好，而且檔案大小可以預期
+       ——原音要上傳給猜的人聽，太大就傳不動。
+       ⚠ 有些瀏覽器不吃這個參數，所以要接得住，不能整個錄音壞掉。 */
+    try{ mrec=new MediaRecorder(micStream,{audioBitsPerSecond:40000}); }
+    catch(e){ mrec=new MediaRecorder(micStream); }
     mrec.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
     const mime=mrec.mimeType||"audio/webm";
     mrec.onstop=()=>{
@@ -1171,12 +1267,38 @@ function rawStart(){
   }catch(e){ mrec=null; }
 }
 function rawStop(){ try{ if(mrec&&mrec.state!=="inactive") mrec.stop(); }catch(e){} mrec=null; }
-function playRaw(){
-  const u=draft&&draft.raw?draft.raw:rawURL;
+/* 只聽原音。走 Web Audio 而不是 <audio>，這樣「原音」那條拉霸才管得到它。 */
+async function playRaw(){
+  ensureMix(); stopAll();
+  const buf=await ensureRawBuf();
+  if(buf&&AC){
+    ensureMix();
+    const s=AC.createBufferSource(); s.buffer=buf;
+    const g=AC.createGain(); g.gain.value=mixVals().v;
+    s.connect(g); g.connect(AC.destination);
+    const t0=AC.currentTime+0.06;
+    s.start(t0); mixSrc={s,g};
+    faceFollow(t0,buf.duration);
+    return;
+  }
+  const u=rawSource();
   if(!u){ alert("這一題沒有錄到原音。"); return; }
-  stopAll();
   const a=new Audio(u); a.play().catch(()=>{});
   window.__raw=a;
+}
+/* 只放原音的時候也要讓角色的嘴巴跟著動——照同一條曲線的音量走 */
+let rawFaceRAF=null;
+function faceFollow(t0,dur){
+  if(rawFaceRAF) cancelAnimationFrame(rawFaceRAF);
+  const c=curve;
+  const loop=()=>{
+    if(!AC){ rawFaceRAF=null; return; }
+    const t=AC.currentTime-t0;
+    if(t>dur+0.2){ rawFaceRAF=null; setFace(0); return; }
+    const tt=Math.max(0,t); setFace(volAt(c,tt),pitchAt(c,tt));
+    rawFaceRAF=requestAnimationFrame(loop);
+  };
+  rawFaceRAF=requestAnimationFrame(loop);
 }
 
 async function toRecord(){
@@ -1209,6 +1331,7 @@ function armRecord(){
   $("recmeter").style.width="0%";
   $("rectime").textContent="20";
   show("s-rec");
+  mountFace("fsRec",true); faceIdle(false); faceResetRange();
   requestAnimationFrame(armLoop);
 }
 function armLoop(){
@@ -1217,6 +1340,7 @@ function armLoop(){
   let rms=0; for(let i=0;i<buf.length;i++) rms+=buf[i]*buf[i];
   rms=Math.sqrt(rms/buf.length);
   $("armmeter").style.width=Math.min(100,rms*600)+"%";
+  setFace(Math.min(1,rms*6));
   if(rms>=ARM_RMS) armHits++; else armHits=0;
   if(armHits>=ARM_HOLD){ beginRecording(); return; }
   requestAnimationFrame(armLoop);
@@ -1250,6 +1374,7 @@ function recLoop(){
   /* 回頭清幾格前那一點——要等後面的資料出現，才知道它是不是孤點 */
   const k=cur.length-1-SPDELAY; if(k>=0) despikeOne(cur,k);
   $("recmeter").style.width=(v*100)+"%";
+  setFace(v,r.f>0?f2m(r.f):null);
   drawRoll("cvRec",cur,{now:t});
   requestAnimationFrame(recLoop);
 }
@@ -1277,7 +1402,13 @@ function stopRecord(){
   $("checkdone").previousElementSibling.style.display=inRoom?"none":"";
   ensureMix();   // 先接好混音，之後不管單獨播還是一起播，拉霸的音量都一致
   $("dlnote").textContent="合起來的檔案會照上面拉霸的音量比例，存成 WAV。";
+  setHeard(null);              // 自己試聽的時候用自己剛錄的那段
   show("s-check");
+  mountFace("fsCheck"); faceIdle(true); faceRangeFrom(curve);
+  mountMix("msCheck",{
+    head:"一起播——原音和樂器版疊在一起",
+    tip:"兩軌<b>同時從頭開始</b>，拉霸各自控音量。把原音拉小、樂器版拉大，就聽得出來哪個字被你唱歪了。"
+  });
   setTimeout(()=>drawRoll("cvV",curve,{span:span()}),70);
 }
 /* 錄到一半發現唱壞了，直接從頭再來一次。
@@ -1424,6 +1555,41 @@ async function makeLink(){
   $("linkhost").textContent=linkBase().replace(/^https?:\/\//,"");
   $("linkver").textContent=BUILD;
   show("s-link");
+  attachClips(packet);
+}
+/* 原音另外傳到雲端，連結裡只放一個很短的編號。
+   ⚠ 傳完之前先把「複製連結」鎖住——不然他複製到的是還沒有原音的那條。 */
+async function attachClips(packet){
+  const note=$("clipnote"), btn=$("copybtn");
+  const blobs=pack.map(q=>q.rawBlob||null);
+  if(!blobs.some(Boolean)){
+    note.textContent="這幾題沒有錄到原音，所以朋友只聽得到樂器版。";
+    return;
+  }
+  if(!FIRE_CFG){
+    note.textContent="這台沒設定雲端，原音傳不上去——朋友只聽得到樂器版。";
+    return;
+  }
+  btn.disabled=true;
+  const old=btn.innerHTML;
+  btn.textContent="原音上傳中…";
+  note.textContent="正在把你的原音傳上去。傳完連結才完整，等一下再複製。";
+  try{
+    const id=await clipsPut(blobs);
+    if(id){
+      const url=linkBase()+"#q="+packet+"&a="+id;
+      $("linkout").value=url;
+      $("codeout").value=packet+"&a="+id;
+      $("linkinfo").textContent=pack.length+" 題，連結長度 "+url.length+" 字。長度沒問題。";
+      note.innerHTML="原音也放進去了：<b>朋友每答完一題，就聽得到你唱的原版</b>，"+
+        "還可以跟樂器版疊在一起、各自調大小聲。";
+    }else{
+      note.textContent="原音沒傳成功。連結照樣能玩，只是朋友聽不到你的原版。";
+    }
+  }catch(e){
+    note.textContent="原音沒傳成功（"+(e&&e.message||e)+"）。連結照樣能玩，只是聽不到原版。";
+  }
+  btn.disabled=false; btn.innerHTML=old;
 }
 /* 用朋友的身分開一次。
    為什麼要有這個：貼出去的那個網址可能卡在舊版本，
@@ -1459,8 +1625,17 @@ function copyCode(){
 }
 
 /* ============ 從連結點進來：直接開始猜 ============ */
-/* 讀一包題目。str＝那串 H4sIA 開頭的代碼（＝連結 #q= 後面那段，同一個東西） */
-async function loadPacket(str){
+/* 讀一包題目。str＝那串 H4sIA 開頭的代碼（＝連結 #q= 後面那段，同一個東西）。
+   後面可能還帶一段「&a=原音編號」——舊的連結沒有這段，一樣讀得動。 */
+let clipId=null;
+function splitQ(s){
+  s=String(s||"");
+  const i=s.indexOf("&a=");
+  return i<0 ? {packet:s,clip:null} : {packet:s.slice(0,i),clip:s.slice(i+3)};
+}
+async function loadPacket(raw){
+  const sp=splitQ(raw), str=sp.packet;
+  clipId=sp.clip||null;
   try{
     const all=await ungz(fromB64(str));
     if(all[0]!==1) return false;
@@ -1491,7 +1666,7 @@ async function loadFromHash(){
 }
 /* 從整段訊息裡撈出代碼：先去掉所有空白換行（聊天軟體會亂折行），再抓 H4sIA 開頭那串 */
 function extractCode(t){
-  const m=String(t||"").replace(/\s+/g,"").match(/H4sIA[0-9A-Za-z_-]{40,}/);
+  const m=String(t||"").replace(/\s+/g,"").match(/H4sIA[0-9A-Za-z_-]{40,}(&a=[0-9a-z]+)?/);
   return m?m[0]:null;
 }
 async function openCode(){
@@ -1525,8 +1700,12 @@ function loadQ(i){
   inp.value=""; inp.maxLength=Math.max(4,n+2);
   inp.placeholder="打"+(CNUM[n]||n)+"個字";
   show("s-guess");
+  mountFace("fsGuess"); faceIdle(true); faceRangeFrom(q.curve);
+  setHeard(null);
   wireWave();
   setTimeout(()=>drawGuessRoll(null),70);
+  /* 原音先偷偷抓下來，答完才不用等 */
+  if(clipId&&!q.rawBlob) clipGet(clipId,i).then(b=>{ if(b) q.rawBlob=b; });
 }
 function submitGuess(){
   stopAll(); endHold();
@@ -1546,7 +1725,30 @@ function submitGuess(){
     ? '下一題（還有 '+(pack.length-qIdx-1)+' 題）<span class="cir">→</span>'
     : '看我對幾題 <span class="cir">→</span>';
   show("s-res");
+  mountFace("fsRes"); faceIdle(true); faceRangeFrom(q.curve);
   setTimeout(()=>drawResultRoll(null),70);
+  showResMix(q);
+}
+/* 答完了才給聽原音——聽得到的話，猜的時候就沒意思了。 */
+function showResMix(q){
+  const who=(mode==="guess"&&fromName)?fromName:"他";
+  const mine=(mode==="make");
+  setHeard(q.rawBlob||null);
+  mountMix("msRes",{
+    head: mine?"聽聽看：你的原音和樂器版":("聽聽看："+who+"到底在唱什麼"),
+    tip: heardURL
+      ? "左邊是洗成樂器的版本，右邊是<b>真的唱的那一段</b>。兩條拉霸各自調大小聲，「一起播」會同時從頭開始。"
+      : "這一題沒有原音可以聽（出題的人那邊沒傳上來），只有樂器版。",
+    state: (!heardURL&&clipId)?"原音還在抓…抓到會自己出現。":""
+  });
+  /* 還在抓的話，抓到再補上 */
+  if(!q.rawBlob&&clipId){
+    const at=qIdx;
+    clipGet(clipId,at).then(b=>{
+      if(!b||at!==qIdx||!$("s-res").classList.contains("on")) return;
+      q.rawBlob=b; showResMix(q);
+    });
+  }
 }
 function nextQ(){
   stopAll();
@@ -1720,6 +1922,8 @@ function stopAll(){
   stopSynth();
   if(mixSrc){ try{ mixSrc.s.stop(); }catch(e){} try{ mixSrc.g.disconnect(); }catch(e){} mixSrc=null; }
   if(window.__raw){ try{window.__raw.pause();}catch(e){} }
+  if(rawFaceRAF){ cancelAnimationFrame(rawFaceRAF); rawFaceRAF=null; }
+  setFace(0);
 }
 function playFrom(t,at){
   ensureAC();
@@ -1735,9 +1939,130 @@ function playFrom(t,at){
 }
 function playAll(){ playFrom(0); }
 
+/* ============ 會跟著音量張嘴的角色 ============
+   為什麼用畫的不用圖片：這個遊戲的命脈是「一個檔案、一條連結就能玩」，
+   多帶圖片檔就破功；塞進程式裡又會讓檔案肥好幾倍。
+   畫的還有一個好處——嘴巴可以無段跟著音量變，隨時要改也只是改數字。
+
+   四段嘴型。改這張表就改嘴型，不用動下面的程式。 */
+const MOUTH=[
+  {name:"閉著", open:false, rx:16, ry:0,  cy:150, tongue:0,   shut:1, eye:0,   brow:0},
+  {name:"微開", open:true,  rx:15, ry:8,  cy:148, tongue:0,   shut:0, eye:0,   brow:2},
+  {name:"半開", open:true,  rx:19, ry:16, cy:148, tongue:.55, shut:0, eye:.35, brow:5},
+  {name:"大開", open:true,  rx:22, ry:24, cy:146, tongue:1,   shut:0, eye:1,   brow:9}
+];
+/* 往上跳容易、往下掉要更小聲才掉。差這一點點，嘴巴才不會在邊界一直閃。 */
+const M_UP=[0,.08,.42,.76], M_DOWN=[0,.05,.35,.68];
+let faceStep=0, faceSm=0, faceHost=null, faceIdleRAF=null;
+let facePeak=0.25, facePn=0, faceLo=null, faceHi=null;
+
+/* 音高 → 抬頭低頭。音域是「這次唱的人自己的」，
+   不然唱得高的人整首都在抬頭、唱得低的整首都在低頭。 */
+function faceResetRange(){ faceLo=null; faceHi=null; facePn=0; facePeak=0.25; }
+/* 整條曲線已經知道的時候（重播、猜題）先把音域算好，第一個音就擺得準 */
+function faceRangeFrom(c){
+  faceResetRange();
+  if(!c||!c.length) return;
+  const ms=c.filter(p=>p.m!==null).map(p=>p.m);
+  if(!ms.length) return;
+  faceLo=Math.min(...ms); faceHi=Math.max(...ms);
+}
+function pitchNorm(m){
+  if(m===null||m===undefined||!isFinite(m)) return null;
+  if(faceLo===null||faceHi===null){ faceLo=m; faceHi=m; }
+  if(m<faceLo) faceLo=m;
+  if(m>faceHi) faceHi=m;
+  /* 撐開是馬上的，收回來很慢——不然唱到一個怪音，後面整首都被壓扁 */
+  faceLo+=(m-faceLo)*0.0006;
+  faceHi+=(m-faceHi)*0.0006;
+  const sp=Math.max(7,faceHi-faceLo), mid=(faceLo+faceHi)/2;
+  return Math.max(-1,Math.min(1,(m-mid)/(sp/2)));
+}
+
+function setFace(v,m){
+  if(!faceHost) return;
+  v=Math.max(0,Math.min(1,v||0));
+  /* 相對音量：唱歌大部分時間音量都卡在同一區，看絕對值的話嘴巴會一直開到底不動。
+     跟「自己剛剛最大聲的時候」比，四段才用得到。 */
+  facePeak=Math.max(v,facePeak*0.9995+0.00005);
+  const rel=Math.min(1,v/Math.max(0.12,facePeak));
+  /* 開得快、收得慢——跟壓縮器一樣，不然嘴巴會抖 */
+  faceSm = rel>faceSm ? rel : faceSm*0.80+rel*0.20;
+  let s=faceStep;
+  while(s<3 && faceSm>=M_UP[s+1]) s++;
+  while(s>0 && faceSm< M_DOWN[s]) s--;
+  faceStep=s;
+  const M=MOUTH[s];
+  const f=Math.max(0,Math.min(1,(faceSm-M_DOWN[s])/(((M_UP[s+1]||1)-M_DOWN[s])||1)));
+  const rx=M.rx+(M.open?f*2:0), ry=M.ry+(M.open?f*3:0), cy=M.cy+f*1.5;
+  $("fMouthShut").style.opacity=M.shut;
+  $("fMouthOpen").style.opacity=M.open?1:0;
+  const hole=$("fHole");
+  hole.setAttribute("rx",rx.toFixed(1));
+  hole.setAttribute("ry",ry.toFixed(1));
+  hole.setAttribute("cy",cy.toFixed(1));
+  $("fTongue").style.opacity=M.tongue;
+  $("fTongue").setAttribute("transform","translate(110,"+(cy+ry*0.42).toFixed(1)+")");
+  $("fEyesShut").style.opacity=M.eye;
+  $("fEyesOpen").style.opacity=1-M.eye;
+
+  /* 音高：高音抬頭深情唱，低音低頭 */
+  const pn=pitchNorm(m);
+  if(pn!==null) facePn=facePn*0.86+pn*0.14; else facePn*=0.95;
+  $("fBrows").setAttribute("transform","translate(0,"+(-M.brow-facePn*6).toFixed(1)+")");
+  /* 抬頭的時候五官在頭裡面往下一點——看得到比較多額頭，才像在仰頭 */
+  $("fFeat").setAttribute("transform","translate(0,"+(facePn*8).toFixed(1)+")");
+
+  const sq=1+faceSm*0.05, sy=1-faceSm*0.035;
+  $("fHead").setAttribute("transform",
+    "translate(110,112) scale("+sq.toFixed(3)+","+sy.toFixed(3)+") translate(-110,-112)");
+
+  /* 左右擺頭。兩個週期疊起來，才不會像節拍器。
+     幅度跟著音量走，但底下留 0.3——音量一直維持不變的時候，頭還是在動。
+     （沒有這個的話，唱到一定音量以後整隻就像卡住了。） */
+  const t=performance.now()/1000;
+  const amp=0.3+0.7*faceSm;
+  const sw=Math.sin(t*2.5)*0.75+Math.sin(t*1.13+1.7)*0.25;
+  $("fBob").setAttribute("transform",
+    "translate("+(sw*amp*4).toFixed(1)+","+(-facePn*26-faceSm*4).toFixed(1)+") "+
+    "rotate("+(sw*amp*7).toFixed(2)+",110,205)");
+  $("fWaves").style.opacity=Math.max(0,(faceSm-0.35)/0.5).toFixed(2);
+}
+/* 把角色搬到某個畫面。big＝放大一點（錄音畫面用）。 */
+function mountFace(slotId,big){
+  const box=$("facebox"), slot=slotId?$(slotId):null;
+  if(!slot){ box.classList.remove("on"); faceHost=null; return; }
+  if(box.parentNode!==slot) slot.appendChild(box);
+  box.classList.add("on");
+  box.classList.toggle("big",!!big);
+  faceHost=slot;
+  setFace(0);
+}
+/* 沒在播的時候讓它輕輕呼吸，畫面才不會像當掉 */
+function faceIdle(on){
+  if(faceIdleRAF){ cancelAnimationFrame(faceIdleRAF); faceIdleRAF=null; }
+  if(!on) return;
+  const t0=performance.now();
+  const loop=now=>{
+    if(!faceHost){ faceIdleRAF=null; return; }
+    /* 有東西在播的時候讓位——那邊會餵真正的音量進來 */
+    if(!nowPlaying&&!rawFaceRAF&&!lvFaceRAF) setFace(0.012+0.012*Math.sin((now-t0)/1400));
+    faceIdleRAF=requestAnimationFrame(loop);
+  };
+  faceIdleRAF=requestAnimationFrame(loop);
+}
+/* 播到第 t 秒的時候，那一格長什麼樣 */
+function frameAt(c,t){
+  if(!c||!c.length) return null;
+  const i=Math.round(t*(c.length-1)/Math.max(0.001,c[c.length-1].t));
+  return c[Math.max(0,Math.min(c.length-1,i))]||null;
+}
+function volAt(c,t){ const p=frameAt(c,t); return (p&&p.m!==null)?p.v:0; }
+function pitchAt(c,t){ const p=frameAt(c,t); return p?p.m:null; }
+
 /* ============ 混音台：原音 × 樂器版 ============
-   ⚠ 原音只存在出題的人自己電腦上（檔案太大塞不進連結），
-   所以這一區只出現在「試聽」畫面。朋友那邊沒有原音可混。 */
+   原音本來只在出題的人自己電腦上。現在錄完會上傳一份（見「原音倉庫」），
+   所以猜的人答完之後、房間揭曉之後，也聽得到唱的人的原版。 */
 let instrGain=null, mixSrc=null, rawBuf=null, rawBufFor=null;
 function ensureMix(){
   ensureAC();
@@ -1756,7 +2081,43 @@ function setMix(){
   if(instrGain) instrGain.gain.value=m.i;
   if(mixSrc&&mixSrc.g) mixSrc.g.gain.value=m.v;
 }
-function rawSource(){ return (draft&&draft.raw)?draft.raw:rawURL; }
+/* 現在這個畫面「聽得到的原音」是哪一段。
+   自己錄的用自己的；猜的人是從雲端抓下來的那一段。 */
+let heardBlob=null, heardURL=null;
+function setHeard(blob){
+  if(heardURL){ try{URL.revokeObjectURL(heardURL);}catch(e){} }
+  heardBlob=blob||null;
+  heardURL=blob?URL.createObjectURL(blob):null;
+  rawBuf=null; rawBufFor=null;      // 解碼快取要丟，不然會播到上一題的
+}
+function rawSource(){
+  if(heardURL) return heardURL;
+  return (draft&&draft.raw)?draft.raw:rawURL;
+}
+function rawBlobNow(){
+  if(heardBlob) return heardBlob;
+  return (draft&&draft.rawBlob)?draft.rawBlob:rawBlob;
+}
+/* 把混音台搬到某個畫面。沒有原音的時候整台變半透明、只留樂器版。 */
+function mountMix(slotId,opt){
+  opt=opt||{};
+  const box=$("mixbox"), slot=slotId?$(slotId):null;
+  if(!slot){ box.classList.remove("on"); return; }
+  if(box.parentNode!==slot) slot.appendChild(box);
+  box.classList.add("on");
+  const has=!!rawSource();
+  $("mixhead").textContent=opt.head||"一起播——原音和樂器版疊在一起";
+  $("mixtip").innerHTML=opt.tip||"兩軌<b>同時從頭開始</b>，拉霸各自控音量。";
+  $("mixV").disabled=!has;
+  $("mixgo").disabled=!has;
+  $("mixonlyraw").disabled=!has;
+  $("mixdl").style.display=has?"":"none";
+  $("dlnote").style.display=has?"":"none";
+  const st=$("mixstate");
+  if(opt.state){ st.textContent=opt.state; st.style.display=""; }
+  else st.style.display="none";
+  setMix();
+}
 /* 原音解碼一次就快取起來——用 AudioBufferSource 播才能跟樂器版精準對齊，
    用 <audio> 元素播會差個幾十毫秒，疊在一起會聽起來像回音。 */
 async function ensureRawBuf(){
@@ -1794,15 +2155,22 @@ function dlBlob(blob,name){
   setTimeout(()=>{ try{URL.revokeObjectURL(a.href);}catch(e){} },4000);
 }
 function safeName(s){ return String(s||"哼歌猜字").replace(/[\\\/:*?"<>|]/g,""); }
+/* 現在這一題的謎底，拿來當檔名。自己出的、房間裡的、連結裡的都要接得住。 */
+function curTarget(){
+  if(draft&&draft.target) return draft.target;
+  if(room&&room.puzzle&&room.puzzle.target) return room.puzzle.target;
+  if(pack&&pack[qIdx]&&pack[qIdx].target) return pack[qIdx].target;
+  return "";
+}
 function downloadRaw(){
-  const b=(draft&&draft.rawBlob)?draft.rawBlob:rawBlob;
+  const b=rawBlobNow();
   if(!b){ alert("這一題沒有錄到原音。"); return; }
   /* 附檔名要照實際格式給。iPhone 錄出來是 mp4，硬給 .webm 的話檔案會打不開。 */
   const t=(b.type||"").toLowerCase();
   const ext=t.indexOf("mp4")>=0||t.indexOf("aac")>=0 ? "m4a"
           : t.indexOf("ogg")>=0 ? "ogg"
           : t.indexOf("wav")>=0 ? "wav" : "webm";
-  dlBlob(b,"哼歌猜字_原音_"+safeName(draft&&draft.target)+"."+ext);
+  dlBlob(b,"哼歌猜字_原音_"+safeName(curTarget())+"."+ext);
 }
 /* 把兩軌照現在拉霸的比例算成一個 WAV 檔 */
 async function downloadMix(){
@@ -1824,7 +2192,7 @@ async function downloadMix(){
       s.connect(g); g.connect(octx.destination); s.start(0);
     }
     const out=await octx.startRendering();
-    dlBlob(bufferToWav(out),"哼歌猜字_合起來_"+safeName(draft&&draft.target)+".wav");
+    dlBlob(bufferToWav(out),"哼歌猜字_合起來_"+safeName(curTarget())+".wav");
     note.textContent=buf?"存好了（樂器版＋原音）。":"存好了。這題沒錄到原音，所以只有樂器版。";
   }catch(e){
     note.textContent="做檔案失敗："+(e&&e.message||e);
@@ -1854,10 +2222,12 @@ function bufferToWav(ab){
   return new Blob([view],{type:"audio/wav"});
 }
 function headLoop(){
-  if(!nowPlaying){headRAF=null; redraw(null); return;}
+  if(!nowPlaying){headRAF=null; redraw(null); setFace(0); return;}
   const at=nowPlaying.from+(AC.currentTime-nowPlaying.at);
-  if(at>span()+0.2){ nowPlaying=null; headRAF=null; redraw(null); return; }
-  redraw(at); headRAF=requestAnimationFrame(headLoop);
+  if(at>span()+0.2){ nowPlaying=null; headRAF=null; redraw(null); setFace(0); return; }
+  redraw(at);
+  setFace(volAt(curve,at),pitchAt(curve,at));     // 角色跟著現在播到的那一格開嘴
+  headRAF=requestAnimationFrame(headLoop);
 }
 const span=()=>curve&&curve.length?Math.max(1,curve[curve.length-1].t):1;
 /* 播放到哪，畫面上就要有一條線跟著跑。
@@ -2080,15 +2450,22 @@ function LocalNet(){
 /* ================= 真的連線：Firebase 即時資料庫 ================= */
 /* ⚠ 要填的東西只有 FIRE_CFG 這一段，其他都不用改。 */
 const FIRE_CFG=window.FIRE_CFG||null;   // 由 firebase-config.js 提供
+/* 連線只開一次。房間和原音倉庫共用同一條，重複 initializeApp 會出錯。 */
+let FB=null;
+async function fbBoot(){
+  if(FB) return FB;
+  if(!FIRE_CFG) throw new Error("還沒設定 Firebase");
+  const app=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const rt =await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+  const a=(app.getApps&&app.getApps().length)?app.getApp():app.initializeApp(FIRE_CFG);
+  FB={rt,ref:rt.getDatabase(a)};
+  return FB;
+}
 function FireNet(){
   let db=null, refs=[], code=null, offset=0;
   async function boot(){
     if(db) return db;
-    if(!FIRE_CFG) throw new Error("還沒設定 Firebase");
-    const app=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-    const rt =await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
-    const a=app.initializeApp(FIRE_CFG);
-    db={rt,ref:rt.getDatabase(a)};
+    db=await fbBoot();
     /* 對錶：大家用伺服器時間算倒數，不然各自的電腦時間差幾秒就亂了 */
     await new Promise(res=>{
       rt.onValue(rt.ref(db.ref,".info/serverTimeOffset"),s=>{ offset=s.val()||0; res(); },{onlyOnce:true});
@@ -2129,6 +2506,87 @@ function makeNet(){
   return (!forceLocal&&FIRE_CFG) ? FireNet() : LocalNet();
 }
 
+/* ================= 原音倉庫 =================
+   為什麼要有這個：唱的人的原音檔太大，塞不進連結（連結會爆掉），
+   所以改成「檔案放雲端、連結只帶一個很短的編號」。
+   猜的人答完之後就抓得到，聽得到他到底在唱什麼。
+
+   ⚠ 全程都要能失敗得很安靜：沒網路、沒設定、抓不到，
+     遊戲照樣能玩，只是那一區不會出現。原音從來就不是必要的東西。 */
+const CLIP_PIECE=60000;      // 一塊 base64 的字數。分塊是為了寫得進去、也看得到進度
+const CLIP_MAX=1600000;      // 整包上限（約 1.2MB 的音檔），超過就不上傳
+
+function blobToB64(blob){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>{ const s=String(r.result||""); res(s.slice(s.indexOf(",")+1)); };
+    r.onerror=()=>rej(r.error||new Error("讀不到檔案"));
+    r.readAsDataURL(blob);
+  });
+}
+function b64ToBlob(s,mime){
+  const bin=atob(s), u=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  return new Blob([u],{type:mime||"audio/webm"});
+}
+function newClipId(){
+  return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+}
+/* 一段音檔 → 可以寫上去的樣子 */
+async function clipPack(blob){
+  const b64=await blobToB64(blob);
+  if(b64.length>CLIP_MAX) throw new Error("這段太長了");
+  const d={};
+  for(let i=0,k=0;i<b64.length;i+=CLIP_PIECE,k++) d[k]=b64.slice(i,i+CLIP_PIECE);
+  return {mime:(blob.type||"audio/webm").split(";")[0], n:Object.keys(d).length, d:d};
+}
+function clipUnpack(node){
+  if(!node||!node.d) return null;
+  let s="";
+  for(let i=0;i<(node.n||0);i++){ const p=node.d[i]; if(!p) return null; s+=p; }
+  if(!s) return null;
+  try{ return b64ToBlob(s,node.mime); }catch(e){ return null; }
+}
+/* 把好幾題的原音一起放上去，回傳一個編號。上傳不了就回 null。 */
+async function clipsPut(blobs){
+  if(!blobs.some(Boolean)) return null;
+  const q={};
+  for(let i=0;i<blobs.length;i++){
+    if(!blobs[i]) continue;
+    try{ q[i]=await clipPack(blobs[i]); }catch(e){}
+  }
+  if(!Object.keys(q).length) return null;
+  const id=newClipId();
+  if(!FIRE_CFG){
+    /* 沒設定雲端（例如 ?local 測試）就先放這台自己的瀏覽器裡 */
+    try{ localStorage.setItem("clip_"+id,JSON.stringify(q)); return id; }
+    catch(e){ return null; }
+  }
+  const fb=await fbBoot();
+  await fb.rt.set(fb.rt.ref(fb.ref,"clips/"+id),{at:fb.rt.serverTimestamp(),q:q});
+  return id;
+}
+/* 抓某一題的原音。抓不到就回 null，不吵。 */
+const clipCache={};
+async function clipGet(id,i){
+  if(!id) return null;
+  const key=id+"/"+i;
+  if(clipCache[key]!==undefined) return clipCache[key];
+  let b=null;
+  try{
+    if(!FIRE_CFG){
+      const raw=localStorage.getItem("clip_"+id);
+      b=raw?clipUnpack(JSON.parse(raw)[i]):null;
+    }else{
+      const fb=await fbBoot();
+      const snap=await fb.rt.get(fb.rt.ref(fb.ref,"clips/"+id+"/q/"+i));
+      b=snap.exists()?clipUnpack(snap.val()):null;
+    }
+  }catch(e){ b=null; }
+  clipCache[key]=b;
+  return b;
+}
+
 
 /* ================= 即時房間：遊戲邏輯 =================
    一輪的流程（房間的 state 欄位）：
@@ -2142,6 +2600,8 @@ function makeNet(){
 const GUESS_SECS=60;
 let room=null, myName="", isHost=false, unwatch=[], roundTimer=null;
 let lastGuessKeys={};
+/* 這一輪從雲端抓下來的原音（不是自己唱的那份） */
+let roomClip=null, roomClipFor=null;
 
 function roomOn(path,cb){ if(Net) unwatch.push(Net.watch(path,cb)); }
 function roomOff(){ for(const f of unwatch){ try{ f(); }catch(e){} } unwatch=[]; clearRoundTimer(); }
@@ -2217,6 +2677,11 @@ function renderRoom(){
     '<span class="sg">'+(p.score||0)+' 分</span></div>').join("");
   $("roomcount").textContent=list.length;
 
+  /* 新的一輪：上一輪抓下來的原音要丟掉，不然會聽到上一題的 */
+  if(st==="lobby"||st==="compose"){
+    if(roomClipFor){ roomClip=null; roomClipFor=null; setHeard(null); }
+  }
+
   for(const id of ["rmLobby","rmWait","rmLive","rmReveal"]) $(id).style.display="none";
 
   if(st==="lobby"){
@@ -2272,6 +2737,7 @@ async function startRound(){
   await Net.set("guesses",null);
   await Net.set("puzzle",null);
   await Net.set("live",null);
+  await Net.set("clip",null);
   await Net.set("deadline",null);
   await Net.set("round",r);
   await Net.set("performer",next.id);
@@ -2288,6 +2754,7 @@ async function submitPuzzle(){
   });
   await Net.set("deadline",Net.now()+GUESS_SECS*1000);
   await Net.set("state","guess");
+  uploadRoomClip();
 }
 /* 只包曲線（房間版不用把謎底也塞進去，謎底另外走欄位） */
 function packCurveBytes(c){ return packCurve(c); }
@@ -2329,6 +2796,7 @@ async function setupLive(){
   $("wrapLive").classList.toggle("nodrag",!canReplay);
   if(canReplay) wireLiveWave();
 
+  mountFace("fsLive"); faceIdle(true);
   const me=amPerformer();
   $("livemine").style.display=me?"":"none";
   $("liveinput").style.display=me?"none":"";
@@ -2429,10 +2897,40 @@ function renderReveal(){
     '<div class="scoreline"><span class="n">'+(i+1)+'</span>'+
     '<span class="a">'+esc(p.name)+'</span>'+
     '<span class="r">'+(p.score||0)+' 分</span></div>').join("");
-  /* 下載＝最後那一次唱的（Alvis 要求以最終版為主） */
-  $("revdl").style.display=(pz.by===myId&&curve&&curve.length)?"":"none";
   $("revnext").style.display=isHost?"":"none";
   $("revwait").style.display=isHost?"none":"";
+  mountFace("fsReveal"); faceIdle(true); faceRangeFrom(curve);
+  revealMix();
+}
+/* 揭曉之後大家都能聽唱的人的原音。
+   出題的人本來就有（自己剛錄的）；其他人要去雲端抓。 */
+function revealMix(){
+  const pz=room.puzzle||{};
+  const mine=(pz.by===myId);
+  const p=(room.players||{})[pz.by]||{};
+  const who=p.name||"他";
+  if(mine) setHeard(null);                       // 用自己那份
+  else{
+    /* 別人唱的：去抓他傳上來的那段 */
+    if(room.clip&&roomClipFor!==room.clip){
+      roomClipFor=room.clip; roomClip=null;
+      clipGet(room.clip,0).then(b=>{
+        if(!b||!room||roomClipFor!==room.clip) return;
+        roomClip=b;
+        if(room.state==="reveal") revealMix();
+      });
+    }
+    if(!heardBlob&&roomClip) setHeard(roomClip);
+  }
+  const has=!!rawSource();
+  $("revdl").style.display=(has&&curve&&curve.length)?"":"none";
+  mountMix("msReveal",{
+    head: mine?"你剛剛唱的":("聽聽看："+who+"到底在唱什麼"),
+    tip: has
+      ? "左邊是大家剛剛聽到的樂器版，右邊是<b>真的唱的那一段</b>。「一起播」會同時從頭開始。"
+      : "這一輪沒有原音可以聽，只有樂器版。",
+    state: (!has&&room.clip)?"原音還在抓…抓到會自己出現。":""
+  });
 }
 
 /* ---- 搶答畫面的波形：壓住＝從那裡聽 ---- */
@@ -2541,13 +3039,38 @@ async function liveConfirm(){
   $("liveDoneBtns").style.display="none";
   await Net.set("deadline",Net.now()+GUESS_SECS*1000);
   await Net.set("state","guess");
+  uploadRoomClip();     // 原音在背景傳，不擋倒數。揭曉的時候大家才聽得到
+}
+/* 把這一輪的原音放上去，揭曉之後房裡的人就聽得到唱的人的原版。
+   ⚠ 失敗就算了，不要吵——沒有原音也還是玩得下去。 */
+async function uploadRoomClip(){
+  const b=(draft&&draft.rawBlob)?draft.rawBlob:rawBlob;
+  if(!b||!Net) return;
+  try{
+    const id=await clipsPut([b]);
+    if(id) await Net.set("clip",id);
+  }catch(e){}
 }
 
 /* ================= 聽的人：邊收邊播 ================= */
 let LV=null, lvTake=-1, lvSeen={}, lvCurve=[], lvDrawRAF=null;
+/* 直播的時候角色也要對嘴。聲音刻意慢兩秒才放（緩衝），
+   所以嘴巴要照「現在真的聽到的那一格」動，不是照剛收到的那一格。 */
+let lvFace=null, lvFaceRAF=null;
+function liveFaceTick(){
+  if(!lvFace||!AC){ lvFaceRAF=null; setFace(0); return; }
+  const t=AC.currentTime-lvFace.t0;
+  if(lvFace.endAt&&AC.currentTime>lvFace.endAt){ lvFace=null; lvFaceRAF=null; setFace(0); return; }
+  setFace(t<0?0:volAt(lvCurve,t), t<0?null:pitchAt(lvCurve,t));
+  lvFaceRAF=requestAnimationFrame(liveFaceTick);
+}
+function liveFaceStart(t0){
+  lvFace={t0:t0,endAt:0};
+  if(!lvFaceRAF) lvFaceRAF=requestAnimationFrame(liveFaceTick);
+}
 
 function liveReset(take){
-  lvTake=take; lvSeen={}; lvCurve=[];
+  lvTake=take; lvSeen={}; lvCurve=[]; faceResetRange();
   liveAudioStop();
   curve=null;
   drawRoll("cvLive",[{t:0,m:null,v:0}],{span:1});
@@ -2589,6 +3112,7 @@ function liveAudioAppend(frames){
     /* 讓「收到的第一格」在兩秒後才響，中途加入的人也會自動對齊 */
     LV={osc:o,osc2:o2,filt:fl,gain:g,last:220,
         t0:AC.currentTime+LIVE_BUFFER-frames[0].t, lastT:frames[0].t};
+    liveFaceStart(LV.t0);
     try{
       g.gain.setValueAtTime(0,Math.max(AC.currentTime,LV.t0+frames[0].t-0.02));
       fl.frequency.setValueAtTime(T.f0+200,Math.max(AC.currentTime,LV.t0+frames[0].t-0.02));
@@ -2609,6 +3133,7 @@ function liveAudioAppend(frames){
 }
 function liveAudioFinish(){
   if(!LV) return;
+  if(lvFace) lvFace.endAt=LV.t0+LV.lastT+0.15;
   try{
     const end=LV.t0+LV.lastT+0.12;
     LV.gain.gain.linearRampToValueAtTime(0,end);
@@ -2618,6 +3143,7 @@ function liveAudioFinish(){
   setTimeout(()=>{ try{dead.gain.disconnect();}catch(e){} },1200);
 }
 function liveAudioStop(){
+  lvFace=null;
   if(!LV) return;
   try{
     const t=AC?AC.currentTime:0;
@@ -2634,7 +3160,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0804d";
+const BUILD="0804g";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); drawTip(); rollInspire();
 loadFromHash().then(loaded=>{
