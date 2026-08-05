@@ -1315,6 +1315,7 @@ function rawStart(){
       rawBlob=new Blob(chunks,{type:mime});
       rawURL=URL.createObjectURL(rawBlob);
       if(draft){ draft.raw=rawURL; draft.rawBlob=rawBlob; }
+      syncMixAvail();   // 原音到這一刻才真的存在，回頭把混音台解鎖
     };
     mrec.start();
   }catch(e){ mrec=null; }
@@ -2131,17 +2132,27 @@ function mountMix(slotId,opt){
   if(!slot){ box.classList.remove("on"); return; }
   if(box.parentNode!==slot) slot.appendChild(box);
   box.classList.add("on");
-  const has=!!rawSource();
   $("mixhead").textContent=opt.head||"一起播——原音和樂器版疊在一起";
   $("mixtip").innerHTML=opt.tip||"兩軌<b>同時從頭開始</b>，拉霸各自控音量。";
+  const st=$("mixstate");
+  if(opt.state){ st.textContent=opt.state; st.style.display=""; }
+  else st.style.display="none";
+  syncMixAvail();
+}
+/* 「現在有沒有原音可以聽」拆出來，因為這件事會晚一點才成立。
+   ⚠ 2026-08-05 修：MediaRecorder 的 onstop 是「之後」才觸發的。
+   唱完按停 → 畫面立刻切到試聽，但那一瞬間原音還沒生出來。
+   以前在 mountMix 裡一次算完就把「一起播」「只聽原音」鎖死，
+   而且沒有人會再來解鎖——結果自己剛唱完那一題反而聽不到自己的原音。
+   現在錄好之後會再叫一次這裡。 */
+function syncMixAvail(){
+  if(!$("mixbox").classList.contains("on")) return;
+  const has=!!rawSource();
   $("mixV").disabled=!has;
   $("mixgo").disabled=!has;
   $("mixonlyraw").disabled=!has;
   $("mixdl").style.display=has?"":"none";
   $("dlnote").style.display=has?"":"none";
-  const st=$("mixstate");
-  if(opt.state){ st.textContent=opt.state; st.style.display=""; }
-  else st.style.display="none";
   setMix();
 }
 /* 原音解碼一次就快取起來——用 AudioBufferSource 播才能跟樂器版精準對齊，
@@ -3186,7 +3197,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0805a";
+const BUILD="0805b";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); rollInspire();
 loadFromHash().then(loaded=>{
