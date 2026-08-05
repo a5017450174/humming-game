@@ -2532,10 +2532,28 @@ function FireNet(){
   async function boot(){
     if(db) return db;
     db=await fbBoot();
-    /* 對錶：大家用伺服器時間算倒數，不然各自的電腦時間差幾秒就亂了 */
-    await new Promise(res=>{
-      rt.onValue(rt.ref(db.ref,".info/serverTimeOffset"),s=>{ offset=s.val()||0; res(); },{onlyOnce:true});
-    });
+    /* 對錶：大家用伺服器時間算倒數，不然各自的電腦時間差幾秒就亂了。
+
+       ⚠ 2026-08-05 修掉「開房間失敗」。這行本來是 rt.onValue(rt.ref(…))，
+       但 rt 只存在於 fbBoot() 裡面（那是它的區域變數），這個 scope 看不到它，
+       所以一按開房間就先 ReferenceError，連資料庫都還沒碰到。
+       同一個 FireNet 裡其他六處都寫成 db.rt.…，只有這一行漏掉。
+       拖這麼久才發現的原因：房間那 52 項自動測試跑的是 LocalNet 假網路，
+       真正的 Firebase 這條路從來沒有人成功走過一次。
+
+       ⚠ 對錶只是為了讓大家的倒數一致，它失敗不該擋住開房間。
+       所以包起來、而且設兩秒逾時：讀不到就用 offset=0 繼續，照樣能玩。 */
+    try{
+      await new Promise(res=>{
+        let done=false;
+        const fin=()=>{ if(done) return; done=true; res(); };
+        setTimeout(fin,2000);
+        db.rt.onValue(db.rt.ref(db.ref,".info/serverTimeOffset"),
+          s=>{ offset=s.val()||0; fin(); },
+          ()=>fin(),                    // 被規則擋掉之類的也要放行
+          {onlyOnce:true});
+      });
+    }catch(e){ offset=0; }
     return db;
   }
   const R=p=>db.rt.ref(db.ref,"rooms/"+code+(p?"/"+p:""));
@@ -3226,7 +3244,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0805d";
+const BUILD="0805e";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
