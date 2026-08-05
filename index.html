@@ -1139,6 +1139,7 @@ let AC=null,analyser=null,buf=null,sr=44100,micOK=false,micStream=null;
 let cur=[],curve=null,recording=false,armed=false,armHits=0,recStart=0,tickTimer=null,voices=[];
 let heldOn=false,nowPlaying=null,headRAF=null;
 let mrec=null,chunks=[],rawURL=null,rawBlob=null;
+let rawPending=false;   // 按了停、但錄音檔還沒生出來的那幾百毫秒
 let pack=[],qIdx=0,draft=null,mode=null;   // mode: "make" | "guess"
 let fromName="";
 
@@ -1310,7 +1311,9 @@ function rawStart(){
     mrec.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
     const mime=mrec.mimeType||"audio/webm";
     mrec.onstop=()=>{
-      if(!chunks.length) return;
+      rawPending=false;
+      /* 一格都沒收到＝這次真的沒錄到。也要更新畫面，才講得出原因 */
+      if(!chunks.length){ syncMixAvail(); return; }
       rawClear();
       rawBlob=new Blob(chunks,{type:mime});
       rawURL=URL.createObjectURL(rawBlob);
@@ -1439,6 +1442,7 @@ function stopRecord(){
   for(let i=Math.max(0,cur.length-1-SPDELAY);i<cur.length;i++) despikeOne(cur,i);
   curve=cur.slice();
   draft.curve=curve;
+  rawPending=!!mrec;   // 有錄音器才有東西可以等；沒有的話別讓畫面卡在「處理中」
   rawStop();
   if(mode==="room"){
     /* 直播模式：唱完不進試聽（Alvis 要的「唱完直接兩顆鍵」） */
@@ -1463,6 +1467,10 @@ function stopRecord(){
     head:"一起播——原音和樂器版疊在一起",
     tip:"兩軌<b>同時從頭開始</b>，拉霸各自控音量。把原音拉小、樂器版拉大，就聽得出來哪個字被你唱歪了。"
   });
+  /* 保險：萬一某個瀏覽器的 onstop 特別慢、或根本不觸發，這裡再問幾次。
+     四秒還沒好就當作沒有，不要讓畫面永遠卡在「處理中」。 */
+  [300,900,2000].forEach(ms=>setTimeout(syncMixAvail,ms));
+  setTimeout(()=>{ if(rawPending){ rawPending=false; syncMixAvail(); } },4000);
   setTimeout(()=>drawRoll("cvV",curve,{span:span()}),70);
 }
 /* 錄到一半發現唱壞了，直接從頭再來一次。
@@ -2126,17 +2134,16 @@ function rawBlobNow(){
   return (draft&&draft.rawBlob)?draft.rawBlob:rawBlob;
 }
 /* 把混音台搬到某個畫面。沒有原音的時候整台變半透明、只留樂器版。 */
+let mixOpt={};
 function mountMix(slotId,opt){
   opt=opt||{};
+  mixOpt=opt;
   const box=$("mixbox"), slot=slotId?$(slotId):null;
   if(!slot){ box.classList.remove("on"); return; }
   if(box.parentNode!==slot) slot.appendChild(box);
   box.classList.add("on");
   $("mixhead").textContent=opt.head||"一起播——原音和樂器版疊在一起";
   $("mixtip").innerHTML=opt.tip||"兩軌<b>同時從頭開始</b>，拉霸各自控音量。";
-  const st=$("mixstate");
-  if(opt.state){ st.textContent=opt.state; st.style.display=""; }
-  else st.style.display="none";
   syncMixAvail();
 }
 /* 「現在有沒有原音可以聽」拆出來，因為這件事會晚一點才成立。
@@ -2153,7 +2160,19 @@ function syncMixAvail(){
   $("mixonlyraw").disabled=!has;
   $("mixdl").style.display=has?"":"none";
   $("dlnote").style.display=has?"":"none";
+  /* ⚠ 鎖住的時候一定要講原因。
+     一顆按不下去、又不說為什麼的灰按鈕，看起來就是「遊戲壞了」。
+     2026-08-05 Alvis 就是這樣問的，而且他問的時候我也不知道是哪一種情況。 */
+  const st=$("mixstate"), why=has?(mixOpt.state||""):(mixOpt.state||whyNoRaw());
+  if(why){ st.innerHTML=why; st.style.display=""; }
+  else st.style.display="none";
   setMix();
+}
+function whyNoRaw(){
+  if(rawPending) return "原音還在處理…好了這幾顆會自己亮起來。";
+  if(mode==="make") return "<b>這一題沒有錄到你的原音</b>，所以只剩樂器版。"+
+    "麥克風那邊沒收到東西——回上一步重錄，錄的時候看那條會不會跟著你的聲音動。";
+  return "這一題沒有原音可以聽，只有樂器版。";
 }
 /* 原音解碼一次就快取起來——用 AudioBufferSource 播才能跟樂器版精準對齊，
    用 <audio> 元素播會差個幾十毫秒，疊在一起會聽起來像回音。 */
@@ -3197,7 +3216,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0805b";
+const BUILD="0805c";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 buildTones(); rollInspire();
 loadFromHash().then(loaded=>{
