@@ -156,6 +156,10 @@ input[readonly]{font-size:13px;color:var(--dim)}
 .chip .nm{padding:8px 6px 8px 15px;font-size:14px;color:#d6cdbd;font-family:inherit;
   transition:color .4s var(--spring)}
 .chip:hover .nm{color:#ffe6b0}
+/* 唱這首的人：掛在歌名後面，小一號、暗一點，一眼看得出是附註不是歌名 */
+.chip .who{font-style:normal;font-size:12px;color:var(--faint);margin-left:7px;
+  transition:color .4s var(--spring)}
+.chip:hover .who{color:#b3a690}
 .chip .fd{padding:8px 12px 8px 8px;display:flex;align-items:center;color:var(--faint);
   transition:color .4s var(--spring)}
 .chip .fd:hover{color:var(--gold)}
@@ -365,18 +369,6 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
   <div class="shell">
     <div class="core teal">
-      <div class="eyebrow t"><i></i>拿到題目代碼？</div>
-      <p class="dim">朋友傳給你一串 <b>H4sIA 開頭的代碼</b>？貼進來就能開始猜（整段訊息直接貼也行）：</p>
-      <div class="inrow">
-        <input type="text" id="codein" autocomplete="off" placeholder="把代碼貼在這裡">
-        <button class="btn" onclick="openCode()">開始猜 <span class="cir">→</span></button>
-      </div>
-      <p class="warn" id="codeerr" style="display:none"></p>
-    </div>
-  </div>
-
-  <div class="shell">
-    <div class="core teal">
       <div class="eyebrow t"><i></i>大家同時在線上？</div>
       <p class="dim">開一個房間，輪流出題、一起搶答，猜中的越早分數越高。</p>
       <div class="row">
@@ -409,17 +401,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
         <button class="btn sm" onclick="rollInspire()">換一批</button>
       </div>
       <div class="chips" id="inspire"></div>
-      <p class="tiny"><b>點歌名</b>＝填到下面的欄位。<b>點放大鏡</b>＝開一個視窗查那首的歌詞。<br>
-        純粹讓你想起「對耶還有這首」，<b>不一定適合當題目</b>，自己判斷。</p>
     </div>
   </div>
 
   <div class="shell">
     <div class="core">
       <div class="stack tight">
-        <label class="lb" for="mkSong">你要唱的歌（可以不填，猜完才給對方看）</label>
+        <label class="lb" for="mkSong">你要唱的歌</label>
         <div class="inrow">
-          <input type="text" id="mkSong" maxlength="30" autocomplete="off" placeholder="例如：望春風">
+          <input type="text" id="mkSong" maxlength="30" autocomplete="off" placeholder="可以不填">
           <button class="btn" onclick="findLyrics($('mkSong').value)">
             搜尋歌詞 <span class="cir">⌕</span></button>
         </div>
@@ -431,16 +421,6 @@ input[readonly]{font-size:13px;color:var(--dim)}
         <input type="text" id="mkWord" maxlength="6" autocomplete="off" placeholder="例如：春風">
         <p class="tiny">選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。</p>
       </div>
-    </div>
-  </div>
-
-  <div class="shell">
-    <div class="core gold">
-      <div class="row" style="align-items:center;justify-content:space-between">
-        <div class="eyebrow"><i></i>這題就這樣唱</div>
-        <button class="btn sm" onclick="nextTip()">換一招</button>
-      </div>
-      <p id="tiptxt" style="font-size:17.5px;line-height:1.7"></p>
     </div>
   </div>
 
@@ -549,18 +529,6 @@ input[readonly]{font-size:13px;color:var(--dim)}
       <p class="tiny">「自己先開一次」應該直接跳到「出題考你」的畫面、
         最下面寫<b>版本 <span id="chkver"></span></b>。連到：<b id="linkhost"></b>　你這邊：<b id="linkver"></b>
         <button class="btn sm" onclick="editPub()" style="margin-left:8px">換網址</button></p>
-    </div>
-  </div>
-
-  <div class="shell">
-    <div class="core pad-s">
-      <div class="eyebrow t"><i></i>備用：題目代碼</div>
-      <input type="text" id="codeout" readonly onclick="this.select()">
-      <div class="row">
-        <button class="btn sm" id="copycode" onclick="copyCode()">複製代碼</button>
-      </div>
-      <p class="tiny">連結打不開的時候用：把 <b>哼歌猜字_給朋友玩.html</b> 檔案丟給朋友，
-        他點兩下打開，把這串貼進首頁的「拿到題目代碼？」框框，一樣能玩。</p>
     </div>
   </div>
 
@@ -968,6 +936,99 @@ const CLASSICS=[
 /* 併進主歌單，讓題庫和「歌名裡有這個字的歌」也一起變多 */
 for(const s of CLASSICS) if(SONGLIST.indexOf(s)<0) SONGLIST.push(s);
 
+/* 唱這首歌的人 —— 讓人看到名字就想起旋律。
+   規矩：
+   1. 只填「一講出來大家就對得起來」的那個版本，不是考證原唱。
+      有爭議或翻唱太多的（望春風、雨夜花那種老歌）故意留白，
+      寧可不寫，也不要寫一個讓人更困惑的名字。
+   2. 童謠、民謠沒有歌手，本來就不填。
+   3. 沒填的歌照樣會出現在畫面上，只是後面不掛名字。
+   4. 看到寫錯的直接改這裡，程式不用動。 */
+const SINGERS={
+/* --- 台語 --- */
+"燒肉粽":"郭金發","舊情綿綿":"洪一峰","思慕的人":"洪一峰","淡水暮色":"洪一峰",
+"媽媽請你也保重":"文夏","黃昏的故鄉":"文夏","舊皮箱的流浪兒":"文夏",
+"孤女的願望":"陳芬蘭","快樂的出帆":"陳芬蘭","心事誰人知":"沈文程","車站":"張秀卿",
+"家後":"江蕙","落雨聲":"江蕙","酒後的心聲":"江蕙","春天的花蕊":"江蕙","傷心酒店":"江蕙",
+"愛拚才會贏":"葉啟田","墓仔埔也敢去":"葉啟田","向前走":"林強","舞女":"陳小雲",
+"舞女淚":"陳小雲","浪子回頭":"茄子蛋","一支小雨傘":"洪榮宏","針線情":"洪榮宏",
+"世界第一等":"伍佰","愛情限時批":"伍佰、萬芳","孤單北半球":"歐得洋",
+/* --- 華語經典 --- */
+"月亮代表我的心":"鄧麗君","甜蜜蜜":"鄧麗君","小城故事":"鄧麗君","我只在乎你":"鄧麗君",
+"但願人長久":"鄧麗君","漫步人生路":"鄧麗君","何日君再來":"鄧麗君","又見炊煙":"鄧麗君",
+"在水一方":"鄧麗君","千言萬語":"鄧麗君",
+"恰似你的溫柔":"蔡琴","你的眼神":"蔡琴","讀你":"蔡琴",
+"橄欖樹":"齊豫","走在雨中":"齊豫","外婆的澎湖灣":"潘安邦",
+"童年":"羅大佑","光陰的故事":"羅大佑","戀曲1990":"羅大佑","鹿港小鎮":"羅大佑","東方之珠":"羅大佑",
+"一剪梅":"費玉清","千千闕歌":"陳慧嫻","偏偏喜歡你":"陳百強","月半小夜曲":"李克勤",
+"海闊天空":"Beyond","光輝歲月":"Beyond","真的愛你":"Beyond",
+"吻別":"張學友","一路上有你":"張學友","心如刀割":"張學友",
+"我等到花兒也謝了":"張學友","忘記你我做不到":"張學友",
+"愛如潮水":"張信哲","過火":"張信哲","白月光":"張信哲","有一點動心":"張信哲",
+"夢醒時分":"陳淑樺","滾滾紅塵":"陳淑樺","笑紅塵":"陳淑樺","明明白白我的心":"陳淑樺",
+"一場遊戲一場夢":"王傑",
+"我的未來不是夢":"張雨生","大海":"張雨生","天天想你":"張雨生","一天到晚游泳的魚":"張雨生",
+"朋友":"周華健","花心":"周華健","讓我歡喜讓我憂":"周華健",
+"心太軟":"任賢齊","傷心太平洋":"任賢齊","對面的女孩看過來":"任賢齊",
+"最浪漫的事":"趙詠華","味道":"辛曉琪","領悟":"辛曉琪",
+/* --- 時代曲 / 民歌 --- */
+"夜上海":"周璇","夜來香":"李香蘭","往事只能回味":"尤雅","我是一片雲":"鳳飛飛",
+"月琴":"鄭怡","微風往事":"鄭怡","蘭花草":"銀霞","你那好冷的小手":"銀霞","蝸牛與黃鸝鳥":"銀霞",
+"龍的傳人":"李建復","忘了我是誰":"王海玲","雨中即景":"王夢麟","廟會":"王夢麟",
+"酒矸倘賣無":"蘇芮","跟著感覺走":"蘇芮","就在今夜":"丘丘合唱團","拜訪春天":"施孝榮",
+"踏浪":"沈雁","外面的世界":"齊秦","一無所有":"崔健",
+/* --- 華語 八九零年代 --- */
+"風中的承諾":"李翊君","把悲傷留給自己":"陳昇","其實你不懂我的心":"童安格",
+"忘情水":"劉德華","明天我要嫁給你":"劉德華","當愛已成往事":"李宗盛、林憶蓮",
+"征服":"那英","值得":"李玟","依然愛你":"王力宏","大城小愛":"王力宏","心動":"林曉培",
+"聽說愛情回來過":"林憶蓮","至少還有你":"林憶蓮",
+"我是一隻小小鳥":"趙傳","我終於失去了你":"趙傳","廣島之戀":"張洪量、莫文蔚","陰天":"莫文蔚",
+"情非得已":"庾澄慶","認錯":"優客李林","太委屈":"陶晶瑩","為愛痴狂":"劉若英","後來":"劉若英",
+"城裡的月光":"許美靜","我要我們在一起":"范曉萱","別問我是誰":"王馨平",
+"愛江山更愛美人":"李麗芬","瀟灑走一回":"葉蒨文",
+"用心良苦":"張宇","雨一直下":"張宇","月亮惹的禍":"張宇",
+"你怎麼捨得我難過":"黃品源","情深深雨濛濛":"趙薇",
+"風繼續吹":"張國榮","冬天裡的一把火":"高凌風","冬季到台北來看雨":"孟庭葦",
+"愛我別走":"張震嶽","彎彎的月亮":"劉歡","水手":"鄭智化","浪人情歌":"伍佰","突然的自我":"伍佰",
+/* --- 周杰倫 --- */
+"七里香":"周杰倫","告白氣球":"周杰倫","稻香":"周杰倫","青花瓷":"周杰倫","晴天":"周杰倫",
+"簡單愛":"周杰倫","可愛女人":"周杰倫","龍捲風":"周杰倫","東風破":"周杰倫",
+"千里之外":"周杰倫、費玉清","菊花台":"周杰倫","髮如雪":"周杰倫","夜曲":"周杰倫","楓":"周杰倫",
+"蒲公英的約定":"周杰倫","彩虹":"周杰倫","說好的幸福呢":"周杰倫","一路向北":"周杰倫",
+"星晴":"周杰倫","擱淺":"周杰倫","退後":"周杰倫","算什麼男人":"周杰倫",
+"不能說的秘密":"周杰倫","陽光宅男":"周杰倫","聽媽媽的話":"周杰倫","蝸牛":"周杰倫",
+"雨下一整晚":"周杰倫","以父之名":"周杰倫","園遊會":"周杰倫","藉口":"周杰倫","暗號":"周杰倫",
+"開不了口":"周杰倫","安靜":"周杰倫","回到過去":"周杰倫","屋頂":"周杰倫、溫嵐",
+"你聽得到":"周杰倫","珊瑚海":"周杰倫","迷迭香":"周杰倫","甜甜的":"周杰倫",
+"給我一首歌的時間":"周杰倫",
+/* --- 華語流行 兩千年後 --- */
+"天黑黑":"孫燕姿","綠光":"孫燕姿","遇見":"孫燕姿","開始懂了":"孫燕姿","我不難過":"孫燕姿",
+"雨天":"孫燕姿","第一天":"孫燕姿","我懷念的":"孫燕姿",
+"天使":"五月天","突然好想你":"五月天","溫柔":"五月天","憨人":"五月天","倔強":"五月天",
+"志明與春嬌":"五月天","戀愛ing":"五月天","知足":"五月天","乾杯":"五月天","洋蔥":"五月天",
+"我不願讓你一個人":"五月天","傷心的人別聽慢歌":"五月天","盛夏光年":"五月天","擁抱":"五月天",
+"離開地球表面":"五月天","如煙":"五月天","諾亞方舟":"五月天","你不是真正的快樂":"五月天",
+"私奔到月球":"五月天、陳綺貞","頑固":"五月天","一顆蘋果":"五月天","星空":"五月天",
+"說愛你":"蔡依林","倒帶":"蔡依林","日不落":"蔡依林","舞孃":"蔡依林","天空":"蔡依林",
+"看我七十二變":"蔡依林","隱形的翅膀":"張韶涵","歐若拉":"張韶涵",
+"小幸運":"田馥甄","魔鬼中的天使":"田馥甄","你就不要想起我":"田馥甄","那些年":"胡夏",
+"修煉愛情":"林俊傑","江南":"林俊傑","曹操":"林俊傑","她說":"林俊傑","醉赤壁":"林俊傑",
+"背對背擁抱":"林俊傑","小酒窩":"林俊傑、蔡卓妍",
+"可惜不是你":"梁靜茹","寧夏":"梁靜茹","勇氣":"梁靜茹","分手快樂":"梁靜茹","崇拜":"梁靜茹",
+"小手拉大手":"梁靜茹",
+"下雨天":"南拳媽媽","童話":"光良","有沒有人告訴你":"陳楚生",
+"我願意":"王菲","紅豆":"王菲","匆匆那年":"王菲","笑忘書":"王菲","傳奇":"王菲",
+"愛你":"陳芳語","第一次愛的人":"王心凌","曖昧":"楊丞琳","只對你有感覺":"飛輪海、田馥甄",
+"你要的愛":"戴佩妮","找自己":"陶喆","普通朋友":"陶喆","就是愛你":"陶喆",
+"記得":"張惠妹","聽海":"張惠妹","剪愛":"張惠妹","姐妹":"張惠妹","三天三夜":"張惠妹",
+"夜空中最亮的星":"逃跑計劃","小情歌":"蘇打綠","身騎白馬":"徐佳瑩","魚":"陳綺貞",
+"因為愛情":"陳奕迅、王菲","好久不見":"陳奕迅","那女孩對我說":"黃義達","平凡之路":"朴樹",
+"沒那麼簡單":"黃小琥","演員":"薛之謙","體面":"于文文","光年之外":"鄧紫棋",
+"追光者":"岑寧兒","走馬":"陳粒","年少有為":"李榮浩","剛好遇見你":"李玉剛","成都":"趙雷",
+"南山南":"馬頔","董小姐":"宋冬野","斑馬斑馬":"宋冬野","安河橋":"宋冬野","理想三旬":"陳鴻宇"
+};
+function singerOf(song){ return SINGERS[song]||""; }
+
 </script>
 <script>
 "use strict";
@@ -1017,19 +1078,8 @@ function setTone(i){
     b.classList.toggle("on",+b.dataset.t===i));
 }
 
-/* ============ 唱法建議 ============
-   每題直接指定一招，不給六個選項讓人選半天。 */
-const MARK_TIPS=[
-  "謎底那幾個字<b>連唱五六次</b>，唱到別人受不了",
-  "把謎底<b>拉超長</b>，長到不合理",
-  "整首都小聲，<b>只有謎底突然爆大聲</b>",
-  "謎底<b>前後各留一大段空白</b>",
-  "唱完整句，<b>再單獨把謎底唱一次</b>",
-  "唱兩遍，<b>第二遍的謎底故意唱高八度或走音</b>"
-];
-let tipIdx=(Math.random()*MARK_TIPS.length)|0;
-function nextTip(){ tipIdx=(tipIdx+1)%MARK_TIPS.length; drawTip(); }
-function drawTip(){ $("tiptxt").innerHTML=MARK_TIPS[tipIdx]; }
+/* ⚠ 2026-08-05 拿掉「這題就這樣唱」那一區（唱法建議）。Alvis 說話太多。
+   六種標記唱法還留在 猜字版_出題參考.md 裡，要救回來去那邊抄。 */
 
 /* ============ 靈感：隨機跳幾首經典 ============ */
 function inspirePool(){
@@ -1050,8 +1100,11 @@ function rollInspire(){
   }
   box.innerHTML=out.map(s=>{
     const j=JSON.stringify(s).replace(/"/g,"&quot;");
+    /* 歌手只是幫忙想起旋律，沒有就不掛，不要留一個空位 */
+    const who=(typeof singerOf==="function")?singerOf(s):"";
     return '<span class="chip">'+
-      '<button class="nm" onclick="useSong('+j+')">'+esc(s)+'</button>'+
+      '<button class="nm" onclick="useSong('+j+')">'+esc(s)+
+        (who?'<i class="who">'+esc(who)+'</i>':'')+'</button>'+
       '<button class="fd" title="查這首的歌詞" aria-label="查 '+esc(s)+' 的歌詞" '+
         'onclick="findLyrics('+j+')">'+MAG+'</button></span>';
   }).join("");
@@ -1212,7 +1265,7 @@ function toMake(){
   $("mkSong").value=""; $("mkWord").value="";
   $("qno").textContent="第 "+(pack.length+1)+" 題";
   $("mkFinish").style.display=(mode!=="room"&&pack.length)?"":"none";
-  drawTip(); rollInspire(); drawRail(); drawDone();
+  rollInspire(); drawRail(); drawDone();
   show("s-make");
 }
 function backToMake(){ mode="make"; toMake(); }
@@ -1547,11 +1600,9 @@ async function makeLink(){
   const packet=await buildPacket();
   const url=linkBase()+"#q="+packet;
   $("linkout").value=url;
-  $("codeout").value=packet;
   $("linkinfo").textContent=pack.length+" 題，連結長度 "+url.length+" 字。"+
     (url.length>7000?"有點長，有些聊天軟體會把太長的訊息截斷——少錄一題或錄短一點比較保險。":"長度沒問題。");
   $("copybtn").innerHTML='複製連結 <span class="cir">⧉</span>';
-  $("copycode").innerHTML='複製代碼 <span class="cir">⧉</span>';
   $("linkhost").textContent=linkBase().replace(/^https?:\/\//,"");
   $("linkver").textContent=BUILD;
   show("s-link");
@@ -1579,7 +1630,6 @@ async function attachClips(packet){
     if(id){
       const url=linkBase()+"#q="+packet+"&a="+id;
       $("linkout").value=url;
-      $("codeout").value=packet+"&a="+id;
       $("linkinfo").textContent=pack.length+" 題，連結長度 "+url.length+" 字。長度沒問題。";
       note.innerHTML="原音也放進去了：<b>朋友每答完一題，就聽得到你唱的原版</b>，"+
         "還可以跟樂器版疊在一起、各自調大小聲。";
@@ -1616,14 +1666,6 @@ function copyLink(){
     ()=>{$("copybtn").innerHTML='複製好了 <span class="cir">✓</span>';},
     ()=>{$("copybtn").textContent="請手動複製";});
 }
-function copyCode(){
-  const el=$("codeout");
-  el.select(); el.setSelectionRange(0,99999);
-  navigator.clipboard.writeText(el.value).then(
-    ()=>{$("copycode").innerHTML='複製好了，去貼給大家 <span class="cir">✓</span>';},
-    ()=>{$("copycode").textContent="請手動複製";});
-}
-
 /* ============ 從連結點進來：直接開始猜 ============ */
 /* 讀一包題目。str＝那串 H4sIA 開頭的代碼（＝連結 #q= 後面那段，同一個東西）。
    後面可能還帶一段「&a=原音編號」——舊的連結沒有這段，一樣讀得動。 */
@@ -1664,24 +1706,8 @@ async function loadFromHash(){
   if(!h.startsWith("#q=")) return false;
   return loadPacket(h.slice(3));
 }
-/* 從整段訊息裡撈出代碼：先去掉所有空白換行（聊天軟體會亂折行），再抓 H4sIA 開頭那串 */
-function extractCode(t){
-  const m=String(t||"").replace(/\s+/g,"").match(/H4sIA[0-9A-Za-z_-]{40,}(&a=[0-9a-z]+)?/);
-  return m?m[0]:null;
-}
-async function openCode(){
-  const err=$("codeerr");
-  err.style.display="none";
-  const c=extractCode($("codein").value);
-  if(!c){
-    err.textContent="這裡面找不到題目代碼。代碼是 H4sIA 開頭的一長串英文數字，整段訊息直接貼進來也可以。";
-    err.style.display=""; return;
-  }
-  if(!await loadPacket(c)){
-    err.textContent="代碼讀不出來，可能少複製到一段。回去把那則訊息整段全選複製，再貼一次。";
-    err.style.display="";
-  }
-}
+/* ⚠ 2026-08-05 拿掉「貼代碼進來猜」（首頁的輸入框、連結頁的代碼輸出、extractCode/openCode/copyCode）。
+   Alvis 說先不要。讀連結 #q= 的路完全沒動，要救回來就是把那個輸入框加回去。 */
 
 /* ============ 猜 ============ */
 const CNUM=["","一","兩","三","四","五","六","七","八"];
@@ -3160,9 +3186,9 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0804g";
+const BUILD="0805a";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
-buildTones(); drawTip(); rollInspire();
+buildTones(); rollInspire();
 loadFromHash().then(loaded=>{
   if(loaded) return;
   /* 沒題目、又被包在框架裡（貼出去的網址）＝這裡只能猜，不能錄 */
@@ -3170,8 +3196,8 @@ loadFromHash().then(loaded=>{
     $("micshell").innerHTML='<div class="core pad-s">'+
       '<p class="warn" style="margin:0">這個網頁<b>只能用來猜</b>，不能錄音'+
       '（瀏覽器在這種頁面上不給麥克風）。</p>'+
-      '<p class="tiny">朋友傳題目代碼給你了嗎？貼進下面的框框就能玩。'+
-      '要出題請在自己電腦上用 <b>開始遊戲.bat</b> 打開。</p></div>';
+      '<p class="tiny">請朋友把<b>連結</b>直接傳給你，點開就能猜。'+
+      '要出題就開 <b>'+PUB_DEFAULT.replace(/^https?:\/\//,"")+'</b>。</p></div>';
   }
 });
 /* 保險：哪天外殼突然肯把 #q= 傳進來了，晚到的也接得住 */
