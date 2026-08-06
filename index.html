@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
@@ -2326,7 +2326,8 @@ function playFrom(t,at){
   if(!headRAF) headRAF=requestAnimationFrame(headLoop);
   return true;
 }
-function playAll(){ playFrom(0); }
+/* ⚠ 要先等樂器版量完才播，不然第一次會用舊的增益播出去、量完才跳一下。 */
+async function playAll(){ ensureMix(); await syncSynthNorm(); playFrom(0); }
 
 /* ============ 會跟著音量張嘴的角色 ============
    為什麼用畫的不用圖片：這個遊戲的命脈是「一個檔案、一條連結就能玩」，
@@ -2457,17 +2458,52 @@ function ensureMix(){
   ensureAC();
   if(!instrGain){ instrGain=AC.createGain(); instrGain.connect(AC.destination); }
   setMix();
+  syncSynthNorm();   // 量完會自己再叫一次 setMix()
   return instrGain;
 }
 function mixVals(){
   const gi=$("mixI"), gv=$("mixV");
   return { i:(gi?+gi.value:85)/100, v:(gv?+gv.value:70)/100 };
 }
+/* ---- 樂器版也要拉齊 ----
+   ⚠ 樂器版是從曲線的音量合成出來的，所以**唱得小聲，樂器版就跟著小聲**——跟原音同一個病。
+   而且猜的人聽最多的就是這一軌。
+   2026-08-06 實測：同一段旋律，唱很小聲 −25.2 LUFS、唱很大聲 −10.7 LUFS，
+   整整差 14.5 dB，而且大聲那端峰值只剩 0.59 dB 就爆了。
+
+   ⚠ 這裡不用 limiter，用純增益就好，而且這樣反而更安全：
+   純增益不會製造出新的尖峰，所以只要增益不超過「峰值到天花板的距離」，
+   **數學上就不可能破音**，連限幅都不需要。
+   （原音那邊需要 limiter 是因為要推到目標值；樂器版本來就夠大聲，推不動也不用推。） */
+let synthNorm=1, synthNormFor=null, synthInfo=null;
+async function syncSynthNorm(){
+  if(!curve||!curve.length){ synthNorm=1; synthNormFor=null; synthInfo=null; return; }
+  if(synthNormFor===curve) return;
+  synthNormFor=curve;
+  try{
+    const rate=48000, dur=(curve[curve.length-1].t||0)+0.4;
+    const octx=new OfflineAudioContext(1,Math.max(1,Math.ceil(dur*rate)),rate);
+    const g=octx.createGain(); g.gain.value=1; g.connect(octx.destination);
+    scheduleSynth(octx,g,0,0);
+    const r=await octx.startRendering();
+    const lufs=await measureLUFS(r);
+    let pk=0; const d=r.getChannelData(0);
+    for(let i=0;i<d.length;i++){ const a=Math.abs(d[i]); if(a>pk) pk=a; }
+    if(lufs===null||!pk){ synthNorm=1; synthInfo=null; return; }
+    const pkDb=20*Math.log10(pk);
+    const want=LOUD_TARGET-lufs;
+    const headroom=LOUD_CEIL-pkDb;          // 最多還能推幾 dB 才會碰到天花板
+    const use=Math.max(LOUD_MAXDOWN,Math.min(Math.min(want,headroom),LOUD_MAXUP));
+    synthNorm=Math.pow(10,use/20);
+    synthInfo={before:lufs,gain:use,after:lufs+use,peak:pkDb,limitedByPeak:(headroom<want-0.05)};
+    setMix(); showLoudInfo();
+  }catch(e){ synthNorm=1; synthInfo=null; }
+}
 function setMix(){
   const m=mixVals();
   if($("mixIv")) $("mixIv").textContent=Math.round(m.i*100);
   if($("mixVv")) $("mixVv").textContent=Math.round(m.v*100);
-  if(instrGain) instrGain.gain.value=m.i;
+  if(instrGain) instrGain.gain.value=m.i*synthNorm;
   if(mixSrc&&mixSrc.g) mixSrc.g.gain.value=m.v;
 }
 /* 現在這個畫面「聽得到的原音」是哪一段。
@@ -2674,16 +2710,21 @@ async function ensureRawBuf(){
    ⚠ 這是刻意留著的：Alvis 要先看真實錄音都落在哪，數值才調得準。 */
 function showLoudInfo(){
   const el=$("loudinfo"); if(!el) return;
-  if(!loudInfo){ el.textContent=""; return; }
   const r=x=>Math.round(x*10)/10;
-  el.innerHTML="錄到的音量 <b>"+r(loudInfo.before)+" LUFS</b>"+
-    " → 補 <b>"+(loudInfo.gain>=0?"+":"")+r(loudInfo.gain)+" dB</b>"+
-    " → 現在 <b>"+r(loudInfo.after)+" LUFS</b>"+
-    (loudInfo.capped?"　⚠ 原本要補 "+r(loudInfo.wanted)+" dB，太多了會把底噪一起拉上來，只補到上限。<b>重錄大聲一點比較清楚。</b>":"");
+  const rows=[];
+  if(synthInfo) rows.push("樂器版 <b>"+r(synthInfo.before)+"</b> → 補 <b>"+
+    (synthInfo.gain>=0?"+":"")+r(synthInfo.gain)+" dB</b> → <b>"+r(synthInfo.after)+" LUFS</b>"+
+    (synthInfo.limitedByPeak?"（推到天花板就停，沒有壓縮）":""));
+  if(loudInfo) rows.push("原音 <b>"+r(loudInfo.before)+"</b> → 補 <b>"+
+    (loudInfo.gain>=0?"+":"")+r(loudInfo.gain)+" dB</b> → <b>"+r(loudInfo.after)+" LUFS</b>"+
+    (loudInfo.capped?"　⚠ 原本要補 "+r(loudInfo.wanted)+
+      " dB，太多會把底噪一起拉上來，只補到上限。<b>重錄大聲一點比較清楚。</b>":""));
+  el.innerHTML=rows.join("<br>");
 }
 async function playTogether(){
   ensureMix(); stopAll();
   const buf=await ensureRawBuf();
+  await syncSynthNorm();
   ensureMix();
   const t0=AC.currentTime+0.12;      // 留一點時間讓兩軌都排好，才會真的同步
   playFrom(0,t0);
@@ -2729,11 +2770,12 @@ async function downloadMix(){
   try{
     const m=mixVals();
     const buf=await ensureRawBuf();
+    await syncSynthNorm();     // 下載到的要跟聽到的一模一樣
     const rate=(AC&&AC.sampleRate)||44100;
     const dur=Math.max(span()+0.35, buf?buf.duration+0.1:0);
     const octx=new OfflineAudioContext(buf?Math.min(2,buf.numberOfChannels):1,
                                        Math.ceil(dur*rate), rate);
-    const ig=octx.createGain(); ig.gain.value=m.i; ig.connect(octx.destination);
+    const ig=octx.createGain(); ig.gain.value=m.i*synthNorm; ig.connect(octx.destination);
     scheduleSynth(octx,ig,0,0);
     if(buf){
       const s=octx.createBufferSource(); s.buffer=buf;
@@ -4143,7 +4185,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806f";
+const BUILD="0806g";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
