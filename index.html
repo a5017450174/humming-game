@@ -884,13 +884,9 @@ input[readonly]{font-size:13px;color:var(--dim)}
       <h2>看看歪成什麼樣</h2>
     </div>
     <div id="chains"></div>
-    <div class="shell">
-      <div class="core gold">
-        <div class="eyebrow"><i></i>哪一條最好笑？</div>
-        <p class="dim" id="voteHint">上面每一條下面都有一顆「投這條」。</p>
-        <div id="voteResult"></div>
-      </div>
-    </div>
+    <!-- ⚠ 2026-08-06 拿掉「投這條最好笑」的投票（Alvis 決定）。
+         理由：好笑不需要比較，也不需要競賽。揭曉的工作是讓大家自己看到好笑的地方，
+         不是替它排名次。 -->
     <button class="btn go big wide" id="relayNext" onclick="startRound()">
       再玩一輪 <span class="cir">→</span></button>
     <p class="dim" id="relayNextWait" style="text-align:center;display:none">等房主開下一輪…</p>
@@ -3787,11 +3783,10 @@ async function playChain(owner){
   }
   chainRun=null;
 }
-function myVote(){ return ((room&&room.votes)||{})[myId]||null; }
-async function relayVote(owner){
-  if(!Net) return;
-  await Net.set("votes/"+myId, myVote()===owner?null:owner);
-}
+/* ⚠ 2026-08-06 拿掉 myVote()／relayVote()（Alvis 決定不做投票）。
+   好笑不需要比較，也不需要競賽。
+   ⚠ 資料庫的 votes 欄位和 firebase規則.json 裡那一條都先留著——
+   留著不會怎樣，但規則少一欄會讓寫入整個被擋，不要為了乾淨去動它。 */
 function renderRelayReveal(){
   const o=relayOrder(), n=relayHops();
   $("chains").innerHTML=o.map(owner=>{
@@ -3827,20 +3822,8 @@ function renderRelayReveal(){
       '<div class="row" style="margin-top:11px">'+
         '<button class="btn" style="flex:1" onclick="playChain(\''+owner+'\')">▶ 一路播下來</button>'+
         '<button class="btn sm" onclick="stopAll()">■ 停</button></div>'+
-      '<button class="btn sm wide" style="margin-top:8px" onclick="relayVote(\''+owner+'\')">'+
-        (myVote()===owner?'✓ 你投了這條':'投這條最好笑')+'</button>'+
     '</div></div>';
   }).join("");
-  const v=(room&&room.votes)||{}, cnt={};
-  for(const k in v) cnt[v[k]]=(cnt[v[k]]||0)+1;
-  const left=o.length-Object.keys(v).length;
-  $("voteHint").textContent=left>0?("還有 "+left+" 個人沒投。"):"都投完了。";
-  $("voteResult").innerHTML=o.map(id=>({id,c:cnt[id]||0}))
-    .sort((a,b)=>b.c-a.c).map(r=>{
-      const q=(room.players||{})[r.id]||{};
-      return '<div class="scoreline"><span class="a">'+esc(q.name||"?")+' 那條</span>'+
-        '<span class="r'+(r.c?" y":"")+'">'+r.c+' 票</span></div>';
-    }).join("");
   $("relayNext").style.display=isHost?"":"none";
   $("relayNextWait").style.display=isHost?"none":"";
 }
@@ -3953,7 +3936,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806c";
+const BUILD="0806d";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
