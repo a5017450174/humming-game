@@ -447,9 +447,22 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
   </div>
 
+  <!-- 一個傳一個「唱」那一手：拿到一個字，這一手不用猜 -->
+  <div id="relayGiven" style="display:none">
+    <div class="shell">
+      <div class="core gold">
+        <div class="eyebrow"><i></i><span id="relayGivenWho">上一個人傳過來的</span></div>
+        <div class="word" id="relayGivenWord"></div>
+        <p class="dim" style="text-align:center">唱一首<b>有這個字</b>的歌給下一個人聽。
+          唱到這個字的時候<b>故意唱得不一樣</b>。</p>
+        <div id="relaySongs" style="margin-top:11px"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="donebox"></div>
 
-  <div class="shell">
+  <div class="shell" id="inspireBox">
     <div class="core">
       <div class="row" style="align-items:center;justify-content:space-between">
         <div class="eyebrow t"><i></i>腦袋一片空白就看這裡</div>
@@ -459,7 +472,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
   </div>
 
-  <div class="shell">
+  <div class="shell" id="mkSongBox">
     <div class="core">
       <div class="stack tight">
         <label class="lb" for="mkSong">你要唱的歌</label>
@@ -471,6 +484,11 @@ input[readonly]{font-size:13px;color:var(--dim)}
         <p class="tiny">歌詞會開在<b>旁邊一個獨立視窗</b>，方便你邊看邊想要挖哪個字。
           遊戲不會存任何歌詞。</p>
       </div>
+    </div>
+  </div>
+
+  <div class="shell" id="mkWordBox">
+    <div class="core">
       <div class="stack tight">
         <label class="lb" for="mkWord" id="mkWordLb">謎底——要讓對方猜的字（最多 6 個字）</label>
         <input type="text" id="mkWord" maxlength="6" autocomplete="off" placeholder="例如：春風">
@@ -479,12 +497,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
   </div>
 
-  <div class="row">
+  <div class="row" id="mkGo">
     <button class="btn go big" style="flex:1" onclick="toRecord()">
       開始錄 <span class="cir">●</span></button>
     <button class="btn" id="mkFinish" onclick="makeLink()" style="display:none">
       不加了，做連結</button>
   </div>
+  <!-- 一個傳一個的字手：不用錄音，填完直接交出去 -->
+  <button class="btn go big wide" id="relaySend" style="display:none" onclick="submitRelayWord()">
+    送出這個字 <span class="cir">→</span></button>
   <button class="btn sm" onclick="backHome()" style="align-self:flex-start">回首頁</button>
 </div>
 
@@ -1379,7 +1400,8 @@ function toMake(){
   $("mkFinish").style.display=(mode!=="room"&&pack.length)?"":"none";
   /* 先回到一般出題的樣子。一個傳一個會在 relayEnterTask() 裡再改掉，
      不這樣做的話，玩完接力回來出連結題，畫面還留著「你聽到的是哪個字」。 */
-  $("relayHear").style.display="none";
+  relayShow({hear:false,word:true,song:true,rec:true,given:false});
+  $("inspireBox").style.display="";     // 一般出題本來就要有靈感區
   $("makehead").textContent="你要唱哪一首？";
   $("mkWordLb").textContent="謎底——要讓對方猜的字（最多 6 個字）";
   $("mkWordTip").innerHTML="選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。";
@@ -3275,8 +3297,21 @@ async function uploadRoomClip(){
 }
 
 /* ================= 一個傳一個（參考傳情畫意） =================
-   每個人各出一題，同時開始。每一手：聽上一個人唱的（只有樂器版）→ 猜一個字
-   → 用你猜的那個字自己挑一首歌唱給下一個人聽。傳一圈之後看它歪成什麼樣。
+   每個人各出一題，同時開始，一手一手傳下去，最後看它歪成什麼樣。
+
+   ⚠ 2026-08-06 改成「交替式」——每一手只做一件事，而且猜的人和唱的人是不同人：
+       第0手 寫字（出自己的題）
+       第1手 拿到字 → 唱一首有那個字的歌
+       第2手 聽到錄音 → 猜一個字
+       第3手 拿到字 → 唱
+       第4手 聽到錄音 → 猜一個字
+   本來（0806a）是合併式：一個人一手做完「聽 → 猜字 → 唱那個字」。
+   Alvis 發現那跟傳情畫意不一樣，決定照原版拆開。
+
+   ⚠ 拆開的代價：「唱」那一手不會產生走樣（拿到貓就唱貓，沒有猜的空間），
+   只有「猜字」那幾手才會歪。所以同樣人數，走樣次數大約砍半——
+   四個人合併式歪三次，交替式只歪一次。**交替式要五個人以上才好玩。**
+   換來的是走樣有兩種來源（唱得歪／聽錯），而且是不同人犯的錯。
 
    ⚠ 為什麼是「大家同時各傳一條」而不是「全房間傳一條」：
    全房間一條的話，其他人在輪到自己之前只能乾等，而且不能偷聽（會破梗）。
@@ -3287,12 +3322,14 @@ async function uploadRoomClip(){
      mode        "relay"
      order       "id1,id2,id3"   傳遞順序，照加入時間排，一輪之內不變
      hop         現在第幾手（0 ＝ 出自己的題）
-     chains/{誰的鏈}/{第幾手}   {by,name,word,song,packet,clip}
+     hops        這一輪總共幾手（開一輪的時候就定死，不隨人數變動）
+     chains/{誰的鏈}/{第幾手}
+        字手  {by,name,word,kind:"w"}
+        唱手  {by,name,word(繼承上一手),song,packet,clip,kind:"s"}
      votes/{投票的人} ＝ 他投的那條鏈是誰的
 
    ⚠ 第 k 手，order 裡第 i 個人負責的是 order[(i-k+N)%N] 那一條。
-   k=0 就是自己那條（出題），k=1 是左邊那個人的，依此類推。
-   總共 N 手，做完每條鏈剛好有 N 筆，等於本子傳一圈回到自己手上。 */
+   k=0 就是自己那條（出題），k=1 是左邊那個人的，依此類推。 */
 
 let relayTask=null;              // 我這一手在做誰的鏈、第幾手
 let roomPlay="buzz";             // 房間現在玩哪一種，錄音流程要靠它分岔
@@ -3300,6 +3337,18 @@ const hopCurveCache={};          // 揭曉時解開的曲線，同一手不用�
 
 function relayOrder(){ return String((room&&room.order)||"").split(",").filter(Boolean); }
 function relayN(){ return relayOrder().length; }
+
+/* 這一輪幾手。照傳情畫意的做法——本子頁數是固定的，跟幾個人玩沒關係。
+   ⚠ 兩條硬規則：
+   1. 一定是奇數，因為要「字開頭、字結尾」，結算才有頭尾可以對照
+   2. 不能超過人數，否則有人會在中途拿到自己那條，直接看到答案 */
+function relayHopsFor(n){ return n>=5 ? 5 : 3; }
+function relayHops(){
+  const h=(room&&room.hops)|0;
+  return h>0 ? h : relayHopsFor(relayN());
+}
+/* 偶數手寫字、奇數手唱。第 0 手是出自己的題，也算寫字。 */
+function relayKind(hop){ return (hop%2===0) ? "w" : "s"; }
 function relayOwnerFor(hop){
   const o=relayOrder(), n=o.length, i=o.indexOf(myId);
   if(i<0||!n) return null;
@@ -3327,37 +3376,92 @@ async function startRelayRound(list){
   await Net.set("clip",null);   await Net.set("guesses",null);
   await Net.set("performer",null); await Net.set("deadline",null);
   await Net.set("order",order.join(","));
+  await Net.set("hops",relayHopsFor(order.length));   // 開一輪就定死，中途有人離開也不會改
   await Net.set("hop",0);
   await Net.set("round",(room.round||0)+1);
   await Net.set("state","relay");
 }
 
-/* ---- 輪到我做這一手 ---- */
+/* ---- 輪到我做這一手 ----
+   三種畫面：出題（只填字）、唱（拿到字，只錄音）、猜（聽了只填字）。
+   全部借用出題那個畫面，靠顯示／隱藏切出來。 */
 async function relayEnterTask(owner,hop){
   mode="room"; roomPlay="relay"; pack=[]; draft=null; curve=null;
   relayTask={owner,hop};
   toMake();
-  if(hop===0){
-    $("relayHear").style.display="none";
-    $("makehead").textContent="出一題給大家傳";
-    $("qno").textContent="第 1 手：你出題";
-    $("mkWordLb").textContent="謎底——要讓大家傳下去的字（最多 6 個字）";
-    $("mkWordTip").innerHTML="選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。";
+  const total=relayHops(), prev=relayHopOf(owner,hop-1);
+  $("qno").textContent="第 "+(hop+1)+" 手 / 共 "+total+" 手";
+
+  if(relayKind(hop)==="s"){
+    /* ---- 唱：拿到一個字，唱一首有那個字的歌。這一手不用猜 ---- */
+    relayShow({hear:false,word:false,song:true,rec:true,given:true});
+    const w=(prev&&prev.word)||"";
+    $("makehead").textContent="唱一首有這個字的歌";
+    /* ⚠ 謎底欄位這一手是藏起來的，但還是要填進去——
+       startRecording() 讀的是它，空的話會跳「先寫要讓對方猜的字」擋住。
+       這一手的字是上一個人給的，不是他自己猜的。 */
+    $("mkWord").value=w;
+    $("relayGivenWord").textContent=w;
+    $("relayGivenWho").textContent=(prev&&prev.name?prev.name:"上一個人")+" 傳過來的";
+    relayFindSongs(w);
     return;
   }
-  const prev=relayHopOf(owner,hop-1);
-  $("makehead").textContent="聽完，換你唱";
-  $("qno").textContent="第 "+(hop+1)+" 手 / 共 "+relayN()+" 手";
+
+  if(hop===0){
+    /* ---- 出自己的題：只填一個字，不錄音 ---- */
+    relayShow({hear:false,word:true,song:false,rec:false,given:false});
+    $("makehead").textContent="出一題給大家傳";
+    $("qno").textContent="第 1 手：你出題";
+    $("mkWordLb").textContent="要傳下去的字（最多 6 個字）";
+    $("mkWordTip").innerHTML="選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。"+
+      "<br>這一手不用唱，填完送出就好。";
+    return;
+  }
+
+  /* ---- 猜：聽上一個人唱的，填一個字。這一手不用唱 ---- */
+  relayShow({hear:true,word:true,song:false,rec:false,given:false});
+  $("makehead").textContent="他唱的是哪個字？";
   $("mkWordLb").textContent="你聽到的是哪個字？（最多 6 個字）";
-  $("mkWordTip").innerHTML="猜錯沒關係——<b>歪掉才好笑</b>。"+
-    "填完就用<b>你填的這個字</b>找一首歌唱給下一個人聽。";
+  $("mkWordTip").innerHTML="猜錯沒關係——<b>歪掉才好笑</b>。這一手不用唱，填完送出就好。";
   $("relayFrom").textContent=(prev&&prev.name?prev.name:"上一個人")+" 唱的";
-  $("relayHear").style.display="";
   const c=await hopCurve(owner,hop-1);
   if(c&&c.length){
     curve=c; ensureMix(); faceRangeFrom(c);
     setTimeout(()=>{ drawRoll("cvRelay",c,{span:span()}); wireRelayWave(); },50);
   }
+}
+/* 這一手要顯示哪幾區 */
+function relayShow(o){
+  $("relayHear").style.display=o.hear?"":"none";
+  $("relayGiven").style.display=o.given?"":"none";
+  $("mkWordBox").style.display=o.word?"":"none";
+  $("mkSongBox").style.display=o.song?"":"none";
+  $("mkGo").style.display=o.rec?"":"none";
+  $("relaySend").style.display=o.rec?"none":"";
+  $("inspireBox").style.display=(o.word&&!o.hear)?"":"none";   // 只有出題那一手需要靈感
+}
+/* 唱的那一手：把歌名裡有那個字的歌列出來。
+   ⚠ 只查得到「歌名裡有」的，歌詞裡有的查不到——但那正好是最好用的一批，
+   因為字在歌名裡通常就在副歌，唱的人一看就知道怎麼唱。 */
+function relayFindSongs(w){
+  const box=$("relaySongs"); if(!box) return;
+  const key=String(w||"").trim();
+  const pool=(typeof SONGLIST!=="undefined")?SONGLIST:[];
+  const hit=key?pool.filter(s=>s.indexOf(key)>=0).slice(0,12):[];
+  if(!hit.length){
+    box.innerHTML='<p class="tiny" style="margin:0">歌單裡沒有歌名帶「'+esc(key)+'」的歌。'+
+      '自己想一首歌詞裡有這個字的就好。</p>';
+    return;
+  }
+  box.innerHTML='<p class="tiny" style="margin:0 0 7px">歌名裡有「<b>'+esc(key)+'</b>」的歌，'+
+    '點一下就填進去：</p><div class="chips">'+
+    hit.map(s=>{
+      const j=JSON.stringify(s).replace(/"/g,"&quot;");
+      const who=(typeof singerOf==="function")?singerOf(s):"";
+      return '<span class="chip"><button class="nm" onclick="useSong('+j+')">'+esc(s)+
+        (who?'<i class="who">'+esc(who)+'</i>':'')+'</button>'+
+        '<button class="fd" title="查這首的歌詞" onclick="findLyrics('+j+')">'+MAG+'</button></span>';
+    }).join("")+'</div>';
 }
 /* 壓住波形＝從那裡重聽，跟猜的畫面同一套 */
 function wireRelayWave(){
@@ -3375,16 +3479,29 @@ function wireRelayWave(){
   cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
 }
 
-/* ---- 送出這一手 ---- */
+/* ---- 送出：唱的那一手 ---- */
 async function submitRelayHop(){
   if(!draft||!draft.curve){ alert("還沒錄好。"); return; }
   const t=relayTask; if(!t||!Net) return;
   const packet=toB64(await gz(packCurve(draft.curve)));
   await Net.set("chains/"+t.owner+"/"+t.hop,{
-    by:myId, name:myName, word:draft.target, song:draft.song||"", packet:packet
+    by:myId, name:myName, word:draft.target, song:draft.song||"",
+    packet:packet, kind:"s"
   });
   /* 原音在背景傳，揭曉才用得到，不擋流程。失敗就算了。 */
   relayUploadClip(t.owner,t.hop,(draft&&draft.rawBlob)||rawBlob);
+  relayTask=null;
+  stopAll();
+  show("s-room");
+}
+/* ---- 送出：只填字的那一手（出題、猜字）。這種手不錄音 ---- */
+async function submitRelayWord(){
+  const t=relayTask; if(!t||!Net) return;
+  const w=$("mkWord").value.replace(/\s+/g,"");
+  if(!w){ alert(t.hop===0?"先寫要傳下去的字。":"先寫你聽到的是哪個字。"); $("mkWord").focus(); return; }
+  await Net.set("chains/"+t.owner+"/"+t.hop,{
+    by:myId, name:myName, word:w, kind:"w"
+  });
   relayTask=null;
   stopAll();
   show("s-room");
@@ -3412,11 +3529,12 @@ function renderRelay(){
   $("rmRelayWait").style.display="";
   const o=relayOrder(), done=relayDoneIds(hop);
   const waiting=o.filter(id=>done.indexOf(id)<0);
-  $("relayWaitHead").textContent=(hop===0)?"你出好題了":"你這一手唱完了";
+  const sing=(relayKind(hop)==="s");
+  $("relayWaitHead").textContent=(hop===0)?"你出好題了":(sing?"你這一手唱完了":"你這一手猜完了");
   $("relayWaitWho").innerHTML=waiting.length
     ? waiting.map(id=>{ const p=(room.players||{})[id]||{};
         return '<div class="qcard"><span class="w">'+esc(p.name||"?")+'</span>'+
-               '<span class="n">還在唱</span></div>'; }).join("")
+               '<span class="n">'+(sing?"還在唱":"還在想")+'</span></div>'; }).join("")
     : '<p class="dim" style="margin:0">大家都好了，正在進下一手…</p>';
   $("relaySkip").style.display=(isHost&&waiting.length)?"":"none";
   if(isHost) maybeAdvanceHop();
@@ -3424,25 +3542,28 @@ function renderRelay(){
 /* 只有房主推進，不然兩個人同時判定會跳兩手 */
 async function maybeAdvanceHop(){
   if(!isHost||!room||room.state!=="relay"||!Net) return;
-  const hop=room.hop||0, n=relayN();
+  const hop=room.hop||0, n=relayN(), total=relayHops();
   if(!n||relayDoneIds(hop).length<n) return;
-  if(hop+1>=n) await Net.set("state","relayEnd");
+  if(hop+1>=total) await Net.set("state","relayEnd");
   else await Net.set("hop",hop+1);
 }
-/* 有人卡住不唱：用他上一手的原樣往下傳，鏈才不會斷 */
+/* 有人卡住：用他上一手的原樣往下傳，鏈才不會斷 */
 async function relayForceNext(){
   if(!isHost||!Net) return;
-  const hop=room.hop||0, o=relayOrder(), n=o.length;
+  const hop=room.hop||0, o=relayOrder(), n=o.length, total=relayHops();
+  const kind=relayKind(hop);
   for(let i=0;i<n;i++){
     const owner=o[((i-hop)%n+n)%n];
     if(relayHopOf(owner,hop)) continue;
     const prev=hop>0?relayHopOf(owner,hop-1):null;
     const p=(room.players||{})[o[i]]||{};
-    await Net.set("chains/"+owner+"/"+hop, prev
-      ? {by:o[i],name:p.name||"?",word:prev.word,song:"",packet:prev.packet,skip:1}
-      : {by:o[i],name:p.name||"?",word:"（沒出題）",song:"",packet:"",skip:1});
+    const base={by:o[i],name:p.name||"?",kind:kind,skip:1};
+    if(!prev){ base.word="（沒出題）"; }
+    else if(kind==="s"){ base.word=prev.word; base.song=""; base.packet=prev.packet||""; }
+    else { base.word=prev.word; }     // 猜字那一手跳過＝原樣傳下去
+    await Net.set("chains/"+owner+"/"+hop,base);
   }
-  if(hop+1>=n) await Net.set("state","relayEnd");
+  if(hop+1>=total) await Net.set("state","relayEnd");
   else await Net.set("hop",hop+1);
 }
 
@@ -3469,7 +3590,7 @@ async function playHop(owner,k){
 async function playChain(owner){
   stopAll();
   const id={}; chainRun=id;
-  const n=relayN();
+  const n=relayHops();
   for(let k=0;k<n;k++){
     if(chainRun!==id) return;
     const c=await hopCurve(owner,k);
@@ -3486,10 +3607,11 @@ async function relayVote(owner){
   await Net.set("votes/"+myId, myVote()===owner?null:owner);
 }
 function renderRelayReveal(){
-  const o=relayOrder(), n=o.length;
+  const o=relayOrder(), n=relayHops();
   $("chains").innerHTML=o.map(owner=>{
     const p=(room.players||{})[owner]||{};
     const hops=[]; for(let k=0;k<n;k++) hops.push(relayHopOf(owner,k));
+    /* 頭尾都是「字」手，所以直接比得起來 */
     const first=hops[0], last=hops[n-1];
     const kept=!!(first&&last&&first.word&&first.word===last.word);
     return '<div class="shell chain"><div class="core'+(kept?' teal':'')+'">'+
@@ -3497,16 +3619,24 @@ function renderRelayReveal(){
         (kept?'　<b style="color:var(--teal)">一路傳到底都沒歪</b>':'')+'</div>'+
       hops.map((h,k)=>{
         if(!h) return '';
-        const prevW=(k>0&&hops[k-1])?hops[k-1].word:null;
+        /* 唱的那一手不會產生走樣（拿到什麼字就唱什麼），所以只顯示歌，不標紅點。
+           走樣只發生在「聽了猜字」那幾手——紅點標在那裡才不會誤導。 */
+        if(relayKind(k)==="s"){
+          return '<div class="hop same">'+
+            '<span class="who">'+esc(h.name||"?")+'</span>'+
+            '<span class="wd"><i>唱了 '+esc(h.song||"（沒填歌名）")+'</i></span>'+
+            '<span class="pl">'+(h.packet
+              ? '<button class="btn sm" onclick="playHop(\''+owner+'\','+k+')">▶</button>':'')+
+            '</span></div>';
+        }
+        /* 字手：跟上一個字手比，不一樣就是有人聽錯了 */
+        const prevW=(k>=2&&hops[k-2])?hops[k-2].word:null;
         const drift=(prevW!==null&&h.word!==prevW);
         return '<div class="hop'+(k===0?' start':(drift?'':' same'))+'">'+
-          '<span class="who">'+(k===0?'出題':esc(h.name||"?"))+'</span>'+
+          '<span class="who">'+(k===0?'出題':esc(h.name||"?")+' 聽成')+'</span>'+
           '<span class="wd"><b>'+esc(h.word||"?")+'</b>'+
-            (drift?'<span class="drift"></span>':'')+
-            (h.song?'<i>唱 '+esc(h.song)+'</i>':'')+'</span>'+
-          '<span class="pl">'+(h.packet
-            ? '<button class="btn sm" onclick="playHop(\''+owner+'\','+k+')">▶</button>':'')+
-          '</span></div>';
+            (drift?'<span class="drift"></span>':'')+'</span>'+
+          '<span class="pl"></span></div>';
       }).join("")+
       '<div class="row" style="margin-top:11px">'+
         '<button class="btn" style="flex:1" onclick="playChain(\''+owner+'\')">▶ 一路播下來</button>'+
@@ -3637,7 +3767,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806a";
+const BUILD="0806b";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
