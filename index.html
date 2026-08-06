@@ -598,6 +598,11 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <p class="dim">這就是<b>對方會聽到的聲音</b>。你自己都認不出來的話，他們一定猜不到——重錄比較快。</p>
   <div class="faceslot" id="fsCheck"></div>
   <div class="roll"><canvas id="cvV"></canvas><div class="lbl">對方會看到這個</div></div>
+  <!-- 框選：出題的人圈出「要猜的那幾個字」在哪一段。試玩時 James 的建議。 -->
+  <div class="row" style="align-items:center;gap:9px">
+    <p class="tiny" id="marknote" style="flex:1;margin:0"></p>
+    <button class="btn sm" id="markclear" style="display:none" onclick="clearMark()">清掉框</button>
+  </div>
   <div class="row" style="align-items:center">
     <button class="btn" onclick="playAll()">▶ 樂器版</button>
     <button class="btn sm" onclick="playRaw()">聽我的原音</button>
@@ -1801,7 +1806,8 @@ function stopRecord(){
      四秒還沒好就當作沒有，不要讓畫面永遠卡在「處理中」。 */
   [300,900,2000].forEach(ms=>setTimeout(syncMixAvail,ms));
   setTimeout(()=>{ if(rawPending){ rawPending=false; syncMixAvail(); } },4000);
-  setTimeout(()=>drawRoll("cvV",curve,{span:span()}),70);
+  setTimeout(()=>{ drawRoll("cvV",curve,{span:span(),mark:draft?draft.mark:null,markEdit:true});
+    wireMark(); syncMarkUI(); },70);
 }
 /* 錄到一半發現唱壞了，直接從頭再來一次。
    ⚠ 要先把 mrec.onstop 拆掉，不然剛剛那段爛的原音還是會被寫進 draft。 */
@@ -1894,13 +1900,20 @@ async function ungz(u8){
 }
 const UTF=new TextEncoder(), UTD=new TextDecoder();
 
-/* 格式：[版本1][題數][名字長][名字…]，接著每題 [謎底長][歌名長][曲線長高][曲線長低][…] */
+/* 格式 v2：[版本2][題數][名字長][名字…]，接著每題
+   [謎底長][歌名長][曲線長高][曲線長低][框起高][框起低][框迄高][框迄低][謎底][歌名][曲線]
+   框存的是「第幾格 +1」，0 代表沒有框（所以 0 不會跟「第 0 格」搞混）。
+   ⚠ v1 少了框那四個位元組。已經貼出去的舊連結不能壞，所以讀的那邊兩種都收。 */
 async function buildPacket(){
   const nb=UTF.encode(fromName||"");
-  const parts=[new Uint8Array([1,pack.length,nb.length]),nb];
+  const parts=[new Uint8Array([2,pack.length,nb.length]),nb];
   for(const q of pack){
     const tb=UTF.encode(q.target), sb=UTF.encode(q.song||""), C=packCurve(q.curve);
-    parts.push(new Uint8Array([tb.length,sb.length,C.length>>8,C.length&255]),tb,sb,C);
+    const mk=q.mark;
+    const a=mk?Math.min(65534,Math.max(0,Math.round(mk.a*FPS)))+1:0;
+    const b=mk?Math.min(65534,Math.max(0,Math.round(mk.b*FPS)))+1:0;
+    parts.push(new Uint8Array([tb.length,sb.length,C.length>>8,C.length&255,
+      a>>8,a&255,b>>8,b&255]),tb,sb,C);
   }
   let len=0; for(const p of parts) len+=p.length;
   const all=new Uint8Array(len);
@@ -2028,18 +2041,26 @@ async function loadPacket(raw){
   clipId=sp.clip||null;
   try{
     const all=await ungz(fromB64(str));
-    if(all[0]!==1) return false;
+    const ver=all[0];
+    /* ⚠ v1 是 2026-08-06 之前的連結，沒有框選那四個位元組。兩種都要讀得動。 */
+    if(ver!==1&&ver!==2) return false;
     const cnt=all[1], nl=all[2];
     let o=3;
     fromName=UTD.decode(all.slice(o,o+nl)); o+=nl;
     pack=[];
     for(let i=0;i<cnt;i++){
-      const tl=all[o], sl=all[o+1], cl=(all[o+2]<<8)|all[o+3]; o+=4;
+      const tl=all[o], sl=all[o+1], cl=(all[o+2]<<8)|all[o+3];
+      let mk=null;
+      if(ver>=2){
+        const a=(all[o+4]<<8)|all[o+5], b=(all[o+6]<<8)|all[o+7];
+        if(a&&b&&b>a) mk={a:(a-1)/FPS,b:(b-1)/FPS};
+      }
+      o+=(ver>=2)?8:4;
       const tg=UTD.decode(all.slice(o,o+tl)); o+=tl;
       const sg=UTD.decode(all.slice(o,o+sl)); o+=sl;
       const cv=unpackCurve(all.slice(o,o+cl)); o+=cl;
       if(!tg||!cv.length) return false;
-      pack.push({target:tg,song:sg,curve:cv,raw:null,guess:"",ok:false});
+      pack.push({target:tg,song:sg,curve:cv,mark:mk,raw:null,guess:"",ok:false});
     }
     if(!pack.length) return false;
     mode="guess";
@@ -2834,7 +2855,8 @@ const span=()=>curve&&curve.length?Math.max(1,curve[curve.length-1].t):1;
 function redraw(head){
   if($("s-guess").classList.contains("on")) drawGuessRoll(head);
   else if($("s-res").classList.contains("on")) drawResultRoll(head);
-  else if($("s-check").classList.contains("on")) drawRoll("cvV",curve,{span:span(),head});
+  else if($("s-check").classList.contains("on"))
+    drawRoll("cvV",curve,{span:span(),head,mark:draft?draft.mark:null,markEdit:true});
   else if($("s-room").classList.contains("on")&&$("rmLive").style.display!=="none")
     drawRoll("cvLive",curve,{span:span(),head});
 }
@@ -2899,6 +2921,33 @@ function drawRoll(id,c,opt){
     g.fillStyle="hsl("+hue+","+sat+"%,"+lit+"%)";
     g.fillRect(x,y-hh/2,2.4,hh);
   }
+  /* 框選：出題的人標「我強調的那幾個字就在這一段」。
+     畫在音高點上面、播放頭下面，才不會蓋掉播到哪。 */
+  if(opt.mark&&opt.mark.b>opt.mark.a){
+    const xa=Math.max(PADL,X(Math.max(0,opt.mark.a)));
+    const xb=Math.min(w,X(Math.min(sp,opt.mark.b)));
+    g.save();
+    g.fillStyle="rgba(90,214,196,.15)";
+    g.fillRect(xa,0,Math.max(2,xb-xa),h);
+    g.strokeStyle="rgba(90,214,196,.9)"; g.lineWidth=2;
+    g.beginPath();
+    g.moveTo(xa,0); g.lineTo(xa,h);
+    g.moveTo(xb,0); g.lineTo(xb,h);
+    g.stroke();
+    if(opt.markEdit){
+      /* 兩顆好抓的把手。⚠ 手機上手指很粗，所以做成手機選字那種把手的長相，
+         而且抓取範圍比看到的還大（見 wireMark 的 24px）。 */
+      const my=h/2;
+      g.fillStyle="#5ad6c4";
+      g.fillRect(xa-6,my-24,12,48);
+      g.fillRect(xb-6,my-24,12,48);
+      g.fillStyle="#08201d";
+      g.font="bold 12px system-ui"; g.textAlign="center"; g.textBaseline="middle";
+      g.fillText("‹",xa,my); g.fillText("›",xb,my);
+      g.textAlign="left"; g.textBaseline="middle";
+    }
+    g.restore();
+  }
   /* 播放頭：一條會發光的線＋頂端一個三角標記。
      原本只有 2px 的細線，在密密麻麻的音高點裡面根本看不到。 */
   if(opt.head!=null&&opt.head>=0&&opt.head<=sp){
@@ -2919,8 +2968,80 @@ function drawRoll(id,c,opt){
     g.restore();
   }
 }
-function drawGuessRoll(head){ drawRoll("cvG",curve,{span:span(),head}); }
-function drawResultRoll(head){ drawRoll("cvR",curve,{span:span(),head}); }
+/* 猜的畫面也要看得到框——那正是它的用途：讓人知道要聽哪一段。
+   ⚠ 沒有 markEdit，所以猜的人看得到框但拖不動。 */
+function drawGuessRoll(head){ drawRoll("cvG",curve,{span:span(),head,mark:markOf(qIdx)}); }
+function drawResultRoll(head){ drawRoll("cvR",curve,{span:span(),head,mark:markOf(qIdx)}); }
+
+/* ============ 框選：出題的人圈出「要猜的那幾個字」在哪一段 ============
+   James（2026-08-06 試玩）的原話：「聽不懂要猜哪」「你不如把要拆的地方上色框起來」。
+
+   ⚠ 這跟 8/6 早上拿掉的「唱法標記」是**完全不同的東西**，不要搞混：
+   拿掉的是「把那個字唱得不一樣」——那個會破壞旋律，跟辨識互相打架。
+   框選是視覺的，**碰不到聲音**，所以沒有那個衝突。
+
+   ⚠ 只綁在試聽畫面的 cvV。那塊畫布沒有「壓住重聽」的手勢，
+   拖曳可以放心拿來框選；猜的畫面（cvG）有那個手勢，不能搶。 */
+let markDrag=null;
+function wireMark(){
+  const cv=$("cvV"); if(!cv||cv.dataset.mk) return; cv.dataset.mk="1";
+  const rect=()=>cv.getBoundingClientRect();
+  const posT=e=>{const r=rect();
+    return Math.max(0,Math.min(1,(e.clientX-r.left-PADL)/(r.width-PADL-4)))*span();};
+  const px=t=>{const r=rect();
+    return PADL+t/Math.max(0.001,span())*(r.width-PADL-4);};
+  cv.addEventListener("pointerdown",e=>{
+    if(!draft||!curve||!curve.length) return;
+    e.preventDefault(); try{cv.setPointerCapture(e.pointerId);}catch(_){}
+    const x=e.clientX-rect().left, mk=draft.mark;
+    /* 先看有沒有抓到把手。24px 是抓取範圍，比畫出來的把手大，手指才好按 */
+    if(mk){
+      if(Math.abs(x-px(mk.a))<24){ markDrag="a"; return; }
+      if(Math.abs(x-px(mk.b))<24){ markDrag="b"; return; }
+    }
+    const t=posT(e);
+    draft.mark={a:t,b:t}; markDrag="b";
+    drawMarkNow();
+  });
+  cv.addEventListener("pointermove",e=>{
+    if(!markDrag||!draft||!draft.mark) return;
+    e.preventDefault();
+    const t=posT(e);
+    if(markDrag==="a") draft.mark.a=t; else draft.mark.b=t;
+    drawMarkNow();
+  });
+  ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>
+    cv.addEventListener(ev,()=>{
+      if(!markDrag) return;
+      markDrag=null;
+      const mk=draft&&draft.mark;
+      if(mk){
+        if(mk.b<mk.a){ const t=mk.a; mk.a=mk.b; mk.b=t; }
+        /* 太短就當作沒框——手滑點一下不該變成一條線 */
+        if(mk.b-mk.a<0.12) draft.mark=null;
+      }
+      drawMarkNow(); syncMarkUI();
+    }));
+  /* 手機上在波形拖曳是框選，不要變成捲動頁面 */
+  cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+}
+function drawMarkNow(){
+  drawRoll("cvV",curve,{span:span(),mark:draft?draft.mark:null,markEdit:true});
+}
+function clearMark(){ if(draft){ draft.mark=null; drawMarkNow(); syncMarkUI(); } }
+function syncMarkUI(){
+  const el=$("marknote"); if(!el) return;
+  const mk=draft&&draft.mark;
+  const r=x=>Math.round(x*10)/10;
+  el.innerHTML=mk
+    ? "圈好了：<b>"+r(mk.a)+" 秒到 "+r(mk.b)+" 秒</b>。猜的人會看到這一段被標起來，"+
+      "但<b>不會知道是哪幾個字</b>。拖兩邊的把手可以微調。"
+    : "在上面的波形上<b>拖一下</b>，把「要讓對方猜的那幾個字」圈起來。"+
+      "<b>不圈也可以</b>，只是對方要自己找。";
+  const b=$("markclear"); if(b) b.style.display=mk?"":"none";
+}
+/* 猜的人看到的框（沒有把手，不能拖） */
+function markOf(i){ const q=pack[i]; return (q&&q.mark)?q.mark:null; }
 
 /* ============ 壓住波形＝從那裡開始聽 ============ */
 function wireWave(){
@@ -4192,7 +4313,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806h";
+const BUILD="0806i";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
