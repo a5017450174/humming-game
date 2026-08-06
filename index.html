@@ -601,7 +601,19 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <!-- 框選：出題的人圈出「要猜的那幾個字」在哪一段。試玩時 James 的建議。 -->
   <div class="row" style="align-items:center;gap:9px">
     <p class="tiny" id="marknote" style="flex:1;margin:0"></p>
+    <button class="btn sm" id="markplay" style="display:none" onclick="playMark()">
+      ▶ 只聽框起來的</button>
     <button class="btn sm" id="markclear" style="display:none" onclick="clearMark()">清掉框</button>
+  </div>
+  <!-- ⚠ 暫時的：讓 Alvis 用耳朵決定框外要降幾 dB，定案之後這一整區拿掉、改成常數。
+       拉扯在於：降越多越知道要猜哪裡，但周圍越小聲、歌越難認出來。 -->
+  <div class="row" id="duckrow" style="align-items:center;gap:7px;display:none">
+    <p class="tiny" style="flex:1;margin:0">框以外降多少（<b id="ducknow"></b>）——
+      降越多越清楚要猜哪，但歌會越難認。</p>
+    <button class="btn sm" onclick="setDuck(0)">關</button>
+    <button class="btn sm" onclick="setDuck(4)">4</button>
+    <button class="btn sm" onclick="setDuck(6)">6</button>
+    <button class="btn sm" onclick="setDuck(9)">9</button>
   </div>
   <div class="row" style="align-items:center">
     <button class="btn" onclick="playAll()">▶ 樂器版</button>
@@ -665,6 +677,16 @@ input[readonly]{font-size:13px;color:var(--dim)}
   </div>
   <p>他唱了一段歌，電腦把<b>歌詞洗掉了</b>，只剩音高和音量。<br>
      你只聽得到那串樂器聲，要猜出他藏在裡面的<b class="gold">謎底</b>是哪幾個字。</p>
+  <!-- ⚠ 2026-08-06：Alvis 給同事玩，他們全部以為在猜歌名。
+       一個具體的例子比三句說明有效，而且例子的答案刻意「不在歌名裡」——
+       用〈望春風〉配「春風」反而會強化「答案跟歌名有關」的誤會。 -->
+  <div class="shell">
+    <div class="core teal">
+      <p class="dim" style="margin:0"><b>不是猜歌名。</b>
+        例如他唱周杰倫的〈稻香〉，要猜的可能是<b class="gold">擁有</b>——
+        答案是<b>歌詞裡的某幾個字</b>，跟歌名沒關係。</p>
+    </div>
+  </div>
   <div class="shell">
     <div class="core">
       <div class="bignum"><span id="hellon">3</span><small>題</small></div>
@@ -691,6 +713,10 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <div class="faceslot" id="fsGuess"></div>
   <div class="roll" id="wrapG"><canvas id="cvG"></canvas>
     <div class="lbl">壓住畫面＝從那裡開始聽</div></div>
+  <!-- ⚠ 把「框」和「要做什麼」綁在同一句話裡講。分開講的話，
+       玩家看到框也不知道那跟他要填的東西有什麼關係（2026-08-06 實測）。 -->
+  <p class="tiny" id="marktip" style="display:none">答案就藏在<b>比較大聲的那一段</b>裡。
+    <b>不是歌名</b>，是歌詞裡的字。</p>
   <div class="row" style="align-items:center">
     <button class="btn" onclick="playAll()">▶ 從頭聽</button>
     <button class="btn sm" onclick="stopAll()">■ 停</button>
@@ -2109,6 +2135,8 @@ function loadQ(i){
   inp.value=""; inp.maxLength=Math.max(4,n+2);
   inp.placeholder="打"+(CNUM[n]||n)+"個字";
   show("s-guess");
+  /* 有框才講「比較大聲的那一段」——沒框的題目講了會害人去找一個不存在的東西 */
+  const tip=$("marktip"); if(tip) tip.style.display=q.mark?"":"none";
   mountFace("fsGuess"); faceIdle(true); faceRangeFrom(q.curve);
   setHeard(null);
   wireWave();
@@ -2282,6 +2310,56 @@ function thud(){
   o.start(t0); o.stop(t0+0.55);
 }
 
+/* ============ 框起來的地方要「聽得出來」 ============
+   猜的人只聽得到樂器版。沒有任何提示的話，他唯一做得到的事就是「認出這首歌」——
+   所以 2026-08-06 Alvis 給同事玩，他們全部以為在猜歌名。
+   **那不是他們的問題**：答案是歌詞裡的字，而歌詞已經被洗掉了，
+   題目根本沒告訴他們答案在哪一段。指出位置不是加分項，是讓題目可以回答的前提。
+
+   ⚠ 這跟 8/6 早上刪掉的「唱法標記」不一樣，界線在**有沒有動到音高和節奏**：
+   - 叫「人」把某個音唱得不一樣 → 動到音高和節奏 → 歌就不像那首歌了（所以刪掉）
+   - 「程式」改音量 → 音高節奏一格都沒動 → 還是同一首歌
+   （我一開始拿「有沒有碰到聲音」當界線，那條線劃錯了，Alvis 用實測打回來。）
+
+   ⚠ 降框外，不要拉高框內：
+   只做衰減就**不可能破音**，也不會去頂 0806g 才拉齊的天花板，
+   而且框內原本的抑揚頓挫完全保留。混音上打聚光燈本來就是壓暗周圍，不是打亮主體。 */
+const MARK_DUCK_DEFAULT=6;   // dB。⚠ 暫定值，等 Alvis 用試聽畫面那排按鈕聽過再定案
+const MARK_DUCK_RAMP=0.10;   // 邊界斜坡幾秒。硬切會有「喀」一聲，聽起來像壞掉
+function markDuckDb(){
+  const v=parseFloat(localStorage.getItem("markDuck"));
+  return isFinite(v)?v:MARK_DUCK_DEFAULT;
+}
+/* 現在正在播的這條曲線，它的框是哪一個。
+   ⚠ 用「曲線是不是同一個物件」去認，不要用畫面判斷——
+   畫面會切換、會共用，物件比對才不會在揭曉那種畫面上抓到別題的框。 */
+function curMark(){
+  if(draft&&draft.curve===curve&&draft.mark) return draft.mark;
+  const q=pack&&pack[qIdx];
+  if(q&&q.curve===curve&&q.mark) return q.mark;
+  return null;
+}
+/* 框外的音量乘上衰減，邊界做斜坡。回傳一條新曲線，原始曲線一格都不動。 */
+let emphCache=null;
+function emphCurve(c,mk){
+  const db=markDuckDb();
+  if(!c||!c.length||!mk||!(mk.b>mk.a)||db<=0) return c;
+  if(emphCache&&emphCache.src===c&&emphCache.a===mk.a&&emphCache.b===mk.b&&emphCache.db===db)
+    return emphCache.out;
+  const g=Math.pow(10,-db/20), R=MARK_DUCK_RAMP;
+  const out=c.map(p=>{
+    let k;
+    if(p.t>=mk.a&&p.t<=mk.b) k=1;                          // 框裡面：原音量
+    else if(p.t<mk.a){ const d=mk.a-p.t; k=(d<R)?(g+(1-g)*(1-d/R)):g; }
+    else { const d=p.t-mk.b; k=(d<R)?(g+(1-g)*(1-d/R)):g; }
+    return {t:p.t,m:p.m,v:p.v*k};
+  });
+  emphCache={src:c,a:mk.a,b:mk.b,db:db,out:out};
+  return out;
+}
+/* 真正要拿去合成的那條。沒框就是原本那條，什麼都不會變。 */
+function synthCurve(){ return emphCurve(curve,curMark()); }
+
 /* ============ 播放 ============ */
 /* 把樂器版排進「任何一個」AudioContext。
    線上播放和離線輸出檔案共用這一套，所以下載下來的檔案
@@ -2340,7 +2418,7 @@ function playFrom(t,at){
   if(!curve||!curve.length||!AC) return false;
   stopSynth();
   const t0=(at==null)?AC.currentTime+0.06:at;
-  const v=scheduleSynth(AC,instrGain||AC.destination,t,t0);
+  const v=scheduleSynth(AC,instrGain||AC.destination,t,t0,synthCurve());
   if(!v) return false;
   voices.push(v);
   nowPlaying={from:t,at:t0};
@@ -2349,6 +2427,32 @@ function playFrom(t,at){
 }
 /* ⚠ 要先等樂器版量完才播，不然第一次會用舊的增益播出去、量完才跳一下。 */
 async function playAll(){ ensureMix(); await syncSynthNorm(); playFrom(0); }
+
+/* 只播 a 到 b 這一段。框完要馬上聽得到自己框了什麼，就是靠這個。
+   ⚠ 合成器不用改：scheduleSynth 的第五個參數本來就吃自訂曲線，
+   而且它內部會做 p.t-fromT 把時間軸歸零，所以「切一段丟進去」就成立。
+   ⚠ 這裡刻意不套框外衰減——你要聽的就是框裡面那一段，不需要對比。 */
+async function playRange(a,b){
+  ensureMix(); await syncSynthNorm();
+  if(!curve||!curve.length||!AC) return false;
+  if(!(b>a)) return false;
+  stopSynth();
+  const seg=curve.filter(p=>p.t>=a&&p.t<=b);
+  if(seg.length<2) return false;
+  const t0=AC.currentTime+0.06;
+  const v=scheduleSynth(AC,instrGain||AC.destination,a,t0,seg);
+  if(!v) return false;
+  voices.push(v);
+  /* until＝播到這裡就收工。沒有它的話聲音停了，播放頭和嘴巴還會跑到整首結束 */
+  nowPlaying={from:a,at:t0,until:b};
+  if(!headRAF) headRAF=requestAnimationFrame(headLoop);
+  return true;
+}
+/* 「只聽框起來的」那顆按鈕 */
+function playMark(){
+  const mk=draft&&draft.mark;
+  if(mk&&mk.b>mk.a) playRange(mk.a,mk.b);
+}
 
 /* ============ 會跟著音量張嘴的角色 ============
    為什麼用畫的不用圖片：這個遊戲的命脈是「一個檔案、一條連結就能玩」，
@@ -2503,14 +2607,19 @@ let synthNorm=1, synthNormFor=null, synthInfo=null, synthJob=null;
    （ensureMix() 會先射一發不等，playAll() 再 await 一次——就是這兩個撞在一起。） */
 function syncSynthNorm(){
   if(!curve||!curve.length){ synthNorm=1; synthNormFor=null; synthInfo=null; synthJob=null; return Promise.resolve(); }
-  if(synthNormFor===curve) return synthJob||Promise.resolve();
-  synthNormFor=curve;
+  /* ⚠ 旗標要認「加了框外衰減之後的那條」，不是原始曲線。
+     改框、改衰減 dB 都會換出一條新的，這樣才會重新量。 */
+  const emph=synthCurve();
+  if(synthNormFor===emph) return synthJob||Promise.resolve();
+  synthNormFor=emph;
   synthJob=(async()=>{
   try{
     const rate=48000, dur=(curve[curve.length-1].t||0)+0.4;
     const octx=new OfflineAudioContext(1,Math.max(1,Math.ceil(dur*rate)),rate);
     const g=octx.createGain(); g.gain.value=1; g.connect(octx.destination);
-    scheduleSynth(octx,g,0,0);
+    /* ⚠ 一定要量「實際會播出去的那條」。
+       量原始曲線、播衰減後的，整首會比 −14 LUFS 小聲，0806g 就白做了。 */
+    scheduleSynth(octx,g,0,0,emph);
     const r=await octx.startRendering();
     const lufs=await measureLUFS(r);
     let pk=0; const d=r.getChannelData(0);
@@ -2804,7 +2913,8 @@ async function downloadMix(){
     const octx=new OfflineAudioContext(buf?Math.min(2,buf.numberOfChannels):1,
                                        Math.ceil(dur*rate), rate);
     const ig=octx.createGain(); ig.gain.value=m.i*synthNorm; ig.connect(octx.destination);
-    scheduleSynth(octx,ig,0,0);
+    /* 下載的檔案要跟畫面上聽到的一模一樣，所以框外衰減也要照套 */
+    scheduleSynth(octx,ig,0,0,synthCurve());
     if(buf){
       const s=octx.createBufferSource(); s.buffer=buf;
       const g=octx.createGain(); g.gain.value=m.v;
@@ -2843,9 +2953,13 @@ function bufferToWav(ab){
 function headLoop(){
   if(!nowPlaying){headRAF=null; redraw(null); setFace(0); return;}
   const at=nowPlaying.from+(AC.currentTime-nowPlaying.at);
-  if(at>span()+0.2){ nowPlaying=null; headRAF=null; redraw(null); setFace(0); return; }
+  /* 只播一段的時候要在段尾收工，不然聲音停了、播放頭和嘴巴還會跑到整首結束 */
+  const end=(nowPlaying.until!=null)?nowPlaying.until+0.15:span()+0.2;
+  if(at>end){ nowPlaying=null; headRAF=null; redraw(null); setFace(0); return; }
   redraw(at);
-  setFace(volAt(curve,at),pitchAt(curve,at));     // 角色跟著現在播到的那一格開嘴
+  /* 嘴巴吃「加了框外衰減之後」的音量——框外自然閉小、框內活起來，
+     這是免費送的第二個提示，而且跟耳朵聽到的一致。音高用原始的，那個沒被動過。 */
+  setFace(volAt(synthCurve(),at),pitchAt(curve,at));
   headRAF=requestAnimationFrame(headLoop);
 }
 const span=()=>curve&&curve.length?Math.max(1,curve[curve.length-1].t):1;
@@ -3020,7 +3134,12 @@ function wireMark(){
         /* 太短就當作沒框——手滑點一下不該變成一條線 */
         if(mk.b-mk.a<0.12) draft.mark=null;
       }
+      synthNormFor=null;          // 框變了＝要播的東西變了，響度要重量
       drawMarkNow(); syncMarkUI();
+      /* ⚠ 放開就播那一段。框完聽不到自己框了什麼，是 Alvis 2026-08-06 抓到的洞。
+         只播框裡面、一秒左右自己停，所以不需要按停；微調把手放開也會再播一次。
+         手機沒問題——pointerup 本身就是使用者手勢，iOS 的音訊解鎖那關過得去。 */
+      if(draft&&draft.mark) playMark();
     }));
   /* 手機上在波形拖曳是框選，不要變成捲動頁面 */
   cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
@@ -3034,11 +3153,22 @@ function syncMarkUI(){
   const mk=draft&&draft.mark;
   const r=x=>Math.round(x*10)/10;
   el.innerHTML=mk
-    ? "圈好了：<b>"+r(mk.a)+" 秒到 "+r(mk.b)+" 秒</b>。猜的人會看到這一段被標起來，"+
-      "但<b>不會知道是哪幾個字</b>。拖兩邊的把手可以微調。"
+    ? "圈好了：<b>"+r(mk.a)+" 秒到 "+r(mk.b)+" 秒</b>。這一段<b>會比較大聲</b>，"+
+      "對方一聽就知道要猜哪裡，但<b>不會知道是哪幾個字</b>。拖兩邊的把手可以微調。"
     : "在上面的波形上<b>拖一下</b>，把「要讓對方猜的那幾個字」圈起來。"+
-      "<b>不圈也可以</b>，只是對方要自己找。";
-  const b=$("markclear"); if(b) b.style.display=mk?"":"none";
+      "<b>圈了對方才知道要猜哪一段</b>——不圈的話，他只能靠猜歌名。";
+  for(const id of ["markclear","markplay","duckrow"]){
+    const b=$(id); if(b) b.style.display=mk?"":"none";
+  }
+  const d=$("ducknow"); if(d) d.textContent=markDuckDb()>0?(markDuckDb()+" dB"):"關掉了";
+}
+/* ⚠ 暫時的：等 Alvis 聽過決定數字，之後把 duckrow 那一區和這支拿掉、改成常數 */
+function setDuck(db){
+  localStorage.setItem("markDuck",String(db));
+  synthNormFor=null;               // 換了衰減＝要重新量響度
+  syncMarkUI(); drawMarkNow();
+  const mk=draft&&draft.mark;
+  if(mk) playAll();                // 馬上整首播一次，才聽得出對比
 }
 /* 猜的人看到的框（沒有把手，不能拖） */
 function markOf(i){ const q=pack[i]; return (q&&q.mark)?q.mark:null; }
@@ -4313,7 +4443,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806i";
+const BUILD="0806j";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
