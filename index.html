@@ -1920,7 +1920,7 @@ function linkBase(){
   if(pub&&PUB_DEAD.some(d=>pub.indexOf(d)>=0)){
     localStorage.removeItem("pubURL"); pub="";
   }
-  return (pub||PUB_DEFAULT).split("#")[0];
+  return (pub||PUB_DEFAULT).split("#")[0].split("?")[0];
 }
 function editPub(){
   const v=prompt("大家點的那個網址（線上版）：",localStorage.getItem("pubURL")||PUB_DEFAULT);
@@ -1938,47 +1938,52 @@ async function makeLink(){
     if(fromName) localStorage.setItem("myName",fromName);
   }
   const packet=await buildPacket();
-  const url=linkBase()+"#q="+packet;
-  $("linkout").value=url;
-  $("linkinfo").textContent=pack.length+" 題，連結長度 "+url.length+" 字。"+
-    (url.length>7000?"有點長，有些聊天軟體會把太長的訊息截斷——少錄一題或錄短一點比較保險。":"長度沒問題。");
+  /* 先擺一條長的頂著（沒有雲端也一定能用），傳完再換成短的 */
+  const long=linkBase()+"#q="+packet;
+  $("linkout").value=long;
+  $("linkinfo").textContent="正在把題目傳上去，換成短網址…";
   $("copybtn").innerHTML='複製連結 <span class="cir">⧉</span>';
   $("linkhost").textContent=linkBase().replace(/^https?:\/\//,"");
   $("linkver").textContent=BUILD;
   show("s-link");
-  attachClips(packet);
+  attachClips(packet,long);
 }
 /* 原音另外傳到雲端，連結裡只放一個很短的編號。
    ⚠ 傳完之前先把「複製連結」鎖住——不然他複製到的是還沒有原音的那條。 */
-async function attachClips(packet){
-  const note=$("clipnote"), btn=$("copybtn");
+async function attachClips(packet,longUrl){
+  const note=$("clipnote"), btn=$("copybtn"), info=$("linkinfo");
   const blobs=pack.map(q=>q.rawBlob||null);
-  if(!blobs.some(Boolean)){
-    note.textContent="這幾題沒有錄到原音，所以朋友只聽得到樂器版。";
-    return;
-  }
+  const hasRaw=blobs.some(Boolean);
   if(!FIRE_CFG){
-    note.textContent="這台沒設定雲端，原音傳不上去——朋友只聽得到樂器版。";
+    $("linkout").value=longUrl;
+    info.innerHTML=pack.length+" 題，連結長度 "+longUrl.length+" 字。"+
+      "<b>這台沒設定雲端，只能用長網址</b>——⚠ 貼到 IG、FB 那種地方會被截斷，朋友會只看到首頁。";
+    note.textContent=hasRaw?"這台沒設定雲端，原音傳不上去——朋友只聽得到樂器版。"
+                           :"這幾題沒有錄到原音，所以朋友只聽得到樂器版。";
     return;
   }
   btn.disabled=true;
   const old=btn.innerHTML;
-  btn.textContent="原音上傳中…";
-  note.textContent="正在把你的原音傳上去。傳完連結才完整，等一下再複製。";
-  try{
-    const id=await clipsPut(blobs);
-    if(id){
-      const url=linkBase()+"#q="+packet+"&a="+id;
-      $("linkout").value=url;
-      $("linkinfo").textContent=pack.length+" 題，連結長度 "+url.length+" 字。長度沒問題。";
-      note.innerHTML="原音也放進去了：<b>朋友每答完一題，就聽得到你唱的原版</b>，"+
-        "還可以跟樂器版疊在一起、各自調大小聲。";
-    }else{
-      note.textContent="原音沒傳成功。連結照樣能玩，只是朋友聽不到你的原版。";
-    }
-  }catch(e){
-    note.textContent="原音沒傳成功（"+(e&&e.message||e)+"）。連結照樣能玩，只是聽不到原版。";
+  btn.textContent="上傳中…";
+  note.textContent="正在把題目傳上去。傳完連結才完整，等一下再複製。";
+  let pid=null,aid=null,err=null;
+  try{ pid=await packetPut(packet); }catch(e){ err=e; }
+  if(hasRaw){ try{ aid=await clipsPut(blobs); }catch(e){} }
+  if(pid){
+    const url=linkBase()+"?p="+pid+(aid?"&a="+aid:"");
+    $("linkout").value=url;
+    info.innerHTML=pack.length+" 題，連結長度 <b>"+url.length+" 字</b>——"+
+      "貼到哪裡都不會被截斷。";
+  }else{
+    /* 題目沒傳上去就退回長網址。能玩，但要提醒他別貼社群 */
+    $("linkout").value=longUrl+(aid?"&a="+aid:"");
+    info.innerHTML="題目沒傳成功"+(err?("（"+(err.message||err)+"）"):"")+
+      "，只能用長網址。⚠ <b>貼到 IG、FB 那種地方會被截斷</b>，用複製貼上直接傳給人比較保險。";
   }
+  if(!hasRaw) note.textContent="這幾題沒有錄到原音，所以朋友只聽得到樂器版。";
+  else if(aid) note.innerHTML="原音也放進去了：<b>朋友每答完一題，就聽得到你唱的原版</b>，"+
+    "還可以跟樂器版疊在一起、各自調大小聲。";
+  else note.textContent="原音沒傳成功。連結照樣能玩，只是朋友聽不到你的原版。";
   btn.disabled=false; btn.innerHTML=old;
 }
 /* 用朋友的身分開一次。
@@ -2042,6 +2047,20 @@ async function loadPacket(raw){
   }catch(e){ return false; }
 }
 async function loadFromHash(){
+  /* 新的連結：?p=編號（短，貼到哪裡都不會被截斷） */
+  let p=null,a=null;
+  try{ const u=new URLSearchParams(location.search); p=u.get("p"); a=u.get("a"); }catch(e){}
+  if(p){
+    const packet=await packetGet(p);
+    if(packet) return loadPacket(packet+(a?"&a="+a:""));
+    /* ⚠ 抓不到不要默默退回首頁——那正是這次要修掉的症狀。講清楚發生什麼事。 */
+    $("micshell").innerHTML='<div class="core pad-s">'+
+      '<p class="warn" style="margin:0">這條連結的題目<b>抓不到</b>。</p>'+
+      '<p class="tiny">可能是網路不通，或是出題的人那邊還沒傳完就把連結貼出來了。'+
+      '重新整理一次看看，還是不行就跟他要一條新的。</p></div>';
+    return false;
+  }
+  /* 舊的連結：#q= 整包題目塞在網址裡。已經貼出去的還要能用，不要拔掉 */
   const h=location.hash;
   if(!h.startsWith("#q=")) return false;
   return loadPacket(h.slice(3));
@@ -2993,6 +3012,52 @@ async function clipGet(id,i){
   return b;
 }
 
+/* ---- 題目本身也放雲端，連結只帶一個編號 ----
+   ⚠ 為什麼要這樣（2026-08-06 Alvis 貼 IG 給朋友，實際踩到）：
+   把整包題目塞在 #q= 後面，網址會長到三千多字元。
+   社群 App 會把它截斷，或包一層自己的轉址（IG 是 l.instagram.com/?u=…），
+   而轉址很容易把 # 後面整段丟掉——**朋友點開只看到首頁**。
+
+   ⚠ 而且新連結用 `?p=` 不是 `#p=`：
+   `#` 後面照定義不會送到伺服器，是最容易在轉址途中掉的東西；
+   `?` 後面是網址本體的一部分，轉幾層都還在。
+
+   ⚠ 走的是 clips/ 那條既有的路，所以 firebase規則.json 一個字都不用改。
+   （規則漏一欄那個功能就整個死掉，能不動就不動。） */
+async function packetPut(packet){
+  const s=String(packet||"");
+  if(!s) return null;
+  const d={};
+  for(let i=0,k=0;i<s.length;i+=CLIP_PIECE,k++) d[k]=s.slice(i,i+CLIP_PIECE);
+  const q={0:{mime:"text/packet",n:Object.keys(d).length,d:d}};
+  const id=newClipId();
+  if(!FIRE_CFG){
+    try{ localStorage.setItem("clip_"+id,JSON.stringify(q)); return id; }
+    catch(e){ return null; }
+  }
+  const fb=await fbBoot();
+  await fb.rt.set(fb.rt.ref(fb.ref,"clips/"+id),{at:fb.rt.serverTimestamp(),q:q});
+  return id;
+}
+async function packetGet(id){
+  if(!id) return null;
+  try{
+    let node=null;
+    if(!FIRE_CFG){
+      const raw=localStorage.getItem("clip_"+id);
+      node=raw?JSON.parse(raw)[0]:null;
+    }else{
+      const fb=await fbBoot();
+      const snap=await fb.rt.get(fb.rt.ref(fb.ref,"clips/"+id+"/q/0"));
+      node=snap.exists()?snap.val():null;
+    }
+    if(!node||!node.d) return null;
+    let s="";
+    for(let i=0;i<(node.n||0);i++){ const p=node.d[i]; if(!p) return null; s+=p; }
+    return s||null;
+  }catch(e){ return null; }
+}
+
 
 /* ================= 即時房間：遊戲邏輯 =================
    一輪的流程（房間的 state 欄位）：
@@ -3936,7 +4001,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806d";
+const BUILD="0806e";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
