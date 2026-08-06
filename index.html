@@ -2475,11 +2475,16 @@ function mixVals(){
    純增益不會製造出新的尖峰，所以只要增益不超過「峰值到天花板的距離」，
    **數學上就不可能破音**，連限幅都不需要。
    （原音那邊需要 limiter 是因為要推到目標值；樂器版本來就夠大聲，推不動也不用推。） */
-let synthNorm=1, synthNormFor=null, synthInfo=null;
-async function syncSynthNorm(){
-  if(!curve||!curve.length){ synthNorm=1; synthNormFor=null; synthInfo=null; return; }
-  if(synthNormFor===curve) return;
+let synthNorm=1, synthNormFor=null, synthInfo=null, synthJob=null;
+/* ⚠ 一定要把「正在跑的那個工作」記下來回傳。
+   本來只用 synthNormFor===curve 當旗標，但那行在非同步工作做完之前就設好了，
+   所以第二個人來 await 會立刻返回、**根本沒等到量完**，第一次播放還是用舊音量。
+   （ensureMix() 會先射一發不等，playAll() 再 await 一次——就是這兩個撞在一起。） */
+function syncSynthNorm(){
+  if(!curve||!curve.length){ synthNorm=1; synthNormFor=null; synthInfo=null; synthJob=null; return Promise.resolve(); }
+  if(synthNormFor===curve) return synthJob||Promise.resolve();
   synthNormFor=curve;
+  synthJob=(async()=>{
   try{
     const rate=48000, dur=(curve[curve.length-1].t||0)+0.4;
     const octx=new OfflineAudioContext(1,Math.max(1,Math.ceil(dur*rate)),rate);
@@ -2498,6 +2503,8 @@ async function syncSynthNorm(){
     synthInfo={before:lufs,gain:use,after:lufs+use,peak:pkDb,limitedByPeak:(headroom<want-0.05)};
     setMix(); showLoudInfo();
   }catch(e){ synthNorm=1; synthInfo=null; }
+  })();
+  return synthJob;
 }
 function setMix(){
   const m=mixVals();
@@ -4185,7 +4192,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806g";
+const BUILD="0806h";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
