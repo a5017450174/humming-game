@@ -902,6 +902,9 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <div class="core gold">
       <div class="eyebrow"><i></i><span id="mixhead">一起播——原音和樂器版疊在一起</span></div>
       <p class="dim" id="mixtip">兩軌<b>同時從頭開始</b>，拉霸各自控音量。</p>
+      <!-- 音量自動拉齊量到的數字。⚠ 刻意印出來的：先看真實錄音都落在哪，
+           數值才調得準。等 Alvis 說可以了再拿掉。 -->
+      <p class="tiny" id="loudinfo" style="margin:-4px 0 9px"></p>
       <div class="mix">
         <label for="mixI">樂器版</label>
         <input type="range" id="mixI" min="0" max="100" value="85" oninput="setMix()">
@@ -2525,8 +2528,130 @@ function whyNoRaw(){
     "麥克風那邊沒收到東西——回上一步重錄，錄的時候看那條會不會跟著你的聲音動。";
   return "這一題沒有原音可以聽，只有樂器版。";
 }
+/* ============ 音量自動拉齊（maximizer ＋ brickwall limiter）============
+   問題：每個人手機、嘴巴距離都不一樣，錄出來有的 -30 有的 -12。
+   小聲那個播出來根本聽不清楚。
+
+   ⚠ 為什麼不用 Web Audio 內建的 DynamicsCompressorNode：
+   它不是 brickwall。有 soft knee、沒有前瞻（lookahead），**尖峰會爆過去**。
+   要「絕對不會破音」只能自己在取樣點上算，所以下面是手寫的。
+
+   ⚠ 為什麼做在這裡，不做在錄音的時候：
+   錄音那條鏈同時餵給音高分析和角色的嘴巴。嘴型是跟「自己剛剛最大聲的時候」比的
+   （2026-08-04 Alvis 抓到的），壓縮會把動態壓平，嘴巴又會變成一直開著。
+   放在播放前處理，那兩個完全碰不到。
+
+   ⚠ 原始檔一個位元都沒有動。這裡只改「播出來的」和「下載到的」。 */
+
+const LOUD_TARGET=-14;    // 目標響度（LUFS）。Spotify／YouTube／Amazon／Tidal 都是這個數字
+const LOUD_CEIL=-1;       // brickwall 天花板（dBFS）。絕對不會超過
+const LOUD_MAXUP=20;      // 最多補幾 dB。補太多會把底噪一起拉上來變嘶聲
+const LOUD_MAXDOWN=-12;   // 太大聲的也要拉回來
+
+/* ---- 量響度：ITU-R BS.1770 ----
+   K 加權濾波 ＋ 400 毫秒區塊、75% 重疊、兩道閘門。
+   ⚠ 係數是照 48kHz 定死的，別的取樣率要重算——
+   所以先用 OfflineAudioContext 開在 48kHz，解碼進去就自動幫我們轉取樣，省掉重算。 */
+async function measureLUFS(buf){
+  if(!buf||!buf.length) return null;
+  const SR=48000;
+  const n=Math.max(1,Math.round(buf.duration*SR));
+  const oc=new OfflineAudioContext(1,n,SR);
+  const src=oc.createBufferSource(); src.buffer=buf;
+  /* 第一段：頭部效應的高頻棚 */
+  const f1=oc.createIIRFilter(
+    [1.53512485958697,-2.69169618940638,1.19839281085285],
+    [1,-1.69065929318241,0.73248077421585]);
+  /* 第二段：RLB 高通 */
+  const f2=oc.createIIRFilter([1,-2,1],[1,-1.99004745483398,0.99007225036621]);
+  src.connect(f1); f1.connect(f2); f2.connect(oc.destination);
+  src.start(0);
+  const out=await oc.startRendering();
+  const x=out.getChannelData(0);
+
+  const win=Math.round(0.4*SR), hop=Math.round(0.1*SR);
+  const zs=[];
+  for(let s=0;s+win<=x.length;s+=hop){
+    let sum=0;
+    for(let i=s;i<s+win;i++) sum+=x[i]*x[i];
+    zs.push(sum/win);
+  }
+  if(!zs.length) return null;
+  const L=z=>-0.691+10*Math.log10(Math.max(z,1e-12));
+  /* 絕對閘門：-70 LUFS 以下不算（靜音段不該把平均拉低） */
+  let keep=zs.filter(z=>L(z)>-70);
+  if(!keep.length) return null;
+  /* 相對閘門：比整體平均低 10 LU 以上的也不算 */
+  const mean=a=>a.reduce((p,c)=>p+c,0)/a.length;
+  const thr=L(mean(keep))-10;
+  const keep2=keep.filter(z=>L(z)>thr);
+  return L(mean(keep2.length?keep2:keep));
+}
+
+/* ---- Maximizer ＋ brickwall limiter ----
+   兩段是同一條鏈：先把整體推上去（maximizer），再用 brickwall 擋住尖峰。
+
+   brickwall 的保證怎麼來的：
+   1. 每個取樣點先算「這一點最多能有多少增益才不會超過天花板」＝ gT[i]
+   2. **倒著跑一次**：g[i] 不可以比 g[i+1] 大太多。
+      這就是前瞻——遇到尖峰之前，增益已經先平滑地降下去了，不會有一聲喀
+   3. 正著跑一次：增益只能慢慢回來（release），不然會有幫浦感
+   每一步都取 min，所以 g[i] 永遠 ≤ gT[i]，**數學上不可能超過天花板**。 */
+function maximize(buf,gainDb){
+  const sr=buf.sampleRate, ch=buf.numberOfChannels, n=buf.length;
+  const ceil=Math.pow(10,LOUD_CEIL/20);
+  const lin=Math.pow(10,gainDb/20);
+  const out=AC.createBuffer(ch,n,sr);
+
+  /* 先算所有聲道裡最大的絕對值，增益要一起算才不會左右聲道跑掉 */
+  const src=[];
+  for(let c=0;c<ch;c++) src.push(buf.getChannelData(c));
+  const peak=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    let m=0;
+    for(let c=0;c<ch;c++){ const a=Math.abs(src[c][i])*lin; if(a>m) m=a; }
+    peak[i]=m;
+  }
+  /* 1. 每一點允許的最大增益 */
+  const g=new Float32Array(n);
+  for(let i=0;i<n;i++) g[i]=peak[i]>ceil ? ceil/peak[i] : 1;
+  /* 2. 倒著跑＝前瞻。5 毫秒內最多讓增益變化 60 dB，換算成每個取樣點能變多少 */
+  const attN=Math.max(1,Math.round(0.005*sr));
+  const kAtt=Math.pow(10,(60/attN)/20);
+  for(let i=n-2;i>=0;i--){ const lim=g[i+1]*kAtt; if(g[i]>lim) g[i]=lim; }
+  /* 3. 正著跑＝release，100 毫秒慢慢回來 */
+  const relN=Math.max(1,Math.round(0.10*sr));
+  const kRel=Math.pow(10,(60/relN)/20);
+  for(let i=1;i<n;i++){ const lim=g[i-1]*kRel; if(g[i]>lim) g[i]=lim; }
+  /* 4. 套上去 */
+  for(let c=0;c<ch;c++){
+    const s=src[c], d=out.getChannelData(c);
+    for(let i=0;i<n;i++) d[i]=s[i]*lin*g[i];
+  }
+  return out;
+}
+
+/* 量 → 算增益 → 推上去 → 擋尖峰 → 再量一次確認。
+   第二次量是因為限幅本身會讓響度掉一點，量完才知道最後落在哪。 */
+let loudInfo=null;    // 給畫面顯示用：{before, after, gain, limited}
+async function normalizeBuf(buf){
+  const before=await measureLUFS(buf);
+  if(before===null) return {buf:buf,info:null};
+  let gain=LOUD_TARGET-before;
+  const wanted=gain;
+  gain=Math.max(LOUD_MAXDOWN,Math.min(LOUD_MAXUP,gain));
+  const done=maximize(buf,gain);
+  const after=await measureLUFS(done);
+  return {buf:done,info:{
+    before:before, after:after, gain:gain,
+    capped:(Math.abs(wanted-gain)>0.05),
+    wanted:wanted
+  }};
+}
+
 /* 原音解碼一次就快取起來——用 AudioBufferSource 播才能跟樂器版精準對齊，
-   用 <audio> 元素播會差個幾十毫秒，疊在一起會聽起來像回音。 */
+   用 <audio> 元素播會差個幾十毫秒，疊在一起會聽起來像回音。
+   ⚠ 2026-08-06 起，解碼完會先過一次音量拉齊，下游（一起播／只聽原音／下載）全部吃到。 */
 async function ensureRawBuf(){
   const u=rawSource();
   if(!u) return null;
@@ -2534,10 +2659,27 @@ async function ensureRawBuf(){
   try{
     ensureAC();
     const ab=await (await fetch(u)).arrayBuffer();
-    rawBuf=await AC.decodeAudioData(ab);
-    rawBufFor=u;
+    const raw=await AC.decodeAudioData(ab);
+    let done=raw;
+    try{
+      const r=await normalizeBuf(raw);
+      done=r.buf; loudInfo=r.info;
+    }catch(e){ loudInfo=null; }   // 拉齊失敗就用原本的，不要整個播不出來
+    rawBuf=done; rawBufFor=u;
+    showLoudInfo();
     return rawBuf;
   }catch(e){ return null; }
+}
+/* 把量到的數字直接印在畫面上。
+   ⚠ 這是刻意留著的：Alvis 要先看真實錄音都落在哪，數值才調得準。 */
+function showLoudInfo(){
+  const el=$("loudinfo"); if(!el) return;
+  if(!loudInfo){ el.textContent=""; return; }
+  const r=x=>Math.round(x*10)/10;
+  el.innerHTML="錄到的音量 <b>"+r(loudInfo.before)+" LUFS</b>"+
+    " → 補 <b>"+(loudInfo.gain>=0?"+":"")+r(loudInfo.gain)+" dB</b>"+
+    " → 現在 <b>"+r(loudInfo.after)+" LUFS</b>"+
+    (loudInfo.capped?"　⚠ 原本要補 "+r(loudInfo.wanted)+" dB，太多了會把底噪一起拉上來，只補到上限。<b>重錄大聲一點比較清楚。</b>":"");
 }
 async function playTogether(){
   ensureMix(); stopAll();
@@ -4001,7 +4143,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806e";
+const BUILD="0806f";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
