@@ -599,21 +599,21 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <div class="faceslot" id="fsCheck"></div>
   <div class="roll"><canvas id="cvV"></canvas><div class="lbl">對方會看到這個</div></div>
   <!-- 框選：出題的人圈出「要猜的那幾個字」在哪一段。試玩時 James 的建議。 -->
+  <!-- 放大縮小：手機上整首擠在 300px 寬，一顆音只有幾 px，根本框不準。
+       兩根手指也可以直接縮放（見 wireMark）。 -->
+  <div class="row" style="align-items:center;gap:7px">
+    <p class="tiny" id="zoomnote" style="flex:1;margin:0">整首</p>
+    <button class="btn sm" id="zoomall" onclick="zoomAll()" style="visibility:hidden">看整首</button>
+    <button class="btn sm" onclick="zoomOut()">－</button>
+    <button class="btn sm" id="zoomin" onclick="zoomIn()">＋</button>
+  </div>
   <div class="row" style="align-items:center;gap:9px">
     <p class="tiny" id="marknote" style="flex:1;margin:0"></p>
-    <button class="btn sm" id="markplay" style="display:none" onclick="playMark()">
-      ▶ 只聽框起來的</button>
     <button class="btn sm" id="markclear" style="display:none" onclick="clearMark()">清掉框</button>
   </div>
-  <!-- ⚠ 暫時的：讓 Alvis 用耳朵決定框外要降幾 dB，定案之後這一整區拿掉、改成常數。
-       拉扯在於：降越多越知道要猜哪裡，但周圍越小聲、歌越難認出來。 -->
-  <div class="row" id="duckrow" style="align-items:center;gap:7px;display:none">
-    <p class="tiny" style="flex:1;margin:0">框以外降多少（<b id="ducknow"></b>）——
-      降越多越清楚要猜哪，但歌會越難認。</p>
-    <button class="btn sm" onclick="setDuck(0)">關</button>
-    <button class="btn sm" onclick="setDuck(4)">4</button>
-    <button class="btn sm" onclick="setDuck(6)">6</button>
-    <button class="btn sm" onclick="setDuck(9)">9</button>
+  <div class="row" id="markplayrow" style="display:none;gap:7px">
+    <button class="btn" style="flex:1" onclick="playMark()">▶ 只聽框起來的</button>
+    <button class="btn" style="flex:1" onclick="playLeadIn()">▶ 從前 3 秒開始聽</button>
   </div>
   <div class="row" style="align-items:center">
     <button class="btn" onclick="playAll()">▶ 樂器版</button>
@@ -1304,6 +1304,43 @@ function yearOf(song){ return YEARS[song]||""; }
 const NAMES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const BLACK={1:1,3:1,6:1,8:1,10:1};
 const noteName=m=>{const r=Math.round(m);return NAMES[((r%12)+12)%12]+(Math.floor(r/12)-1);};
+
+/* ============ 把曲線切成一顆一顆的音（Melodyne／Cubase 那種方塊） ============
+   為什麼要有：光看一條起伏的線，看不出「這個音到底是 F5 還是 E5」。
+   切成方塊之後，**方塊＝這個音應該是什麼、線＝他實際唱到哪裡**，
+   兩個疊在一起，唱不準的地方一眼就看得到，而且看得出是哪個音在飄。
+
+   做法：四捨五入到最近的半音，連續同一個半音的併成一塊。
+   ⚠ 抖音會讓四捨五入在兩個半音之間跳來跳去，把一顆音切成一堆碎片，
+     所以要合併兩次：先接回中間斷掉的、丟掉太碎的、再接一次。 */
+const NOTE_MINLEN=0.09;   // 短於這個當滑音經過，不算一顆音
+const NOTE_GAP=0.12;      // 中間斷這麼短就接回去（抖音造成的）
+function noteBlocks(c){
+  if(!c||!c.length) return [];
+  let out=[], cur=null;
+  for(const p of c){
+    const n=(p.m===null)?null:Math.round(p.m);
+    if(n===null){ if(cur){ out.push(cur); cur=null; } continue; }
+    if(cur&&cur.n===n){ cur.b=p.t; cur.sum+=p.m; cur.k++; if(p.v>cur.v) cur.v=p.v; }
+    else { if(cur) out.push(cur); cur={n,a:p.t,b:p.t,sum:p.m,k:1,v:p.v}; }
+  }
+  if(cur) out.push(cur);
+  const join=arr=>{
+    const r=[];
+    for(const b of arr){
+      const last=r[r.length-1];
+      if(last&&last.n===b.n&&b.a-last.b<=NOTE_GAP){
+        last.b=b.b; last.sum+=b.sum; last.k+=b.k; if(b.v>last.v) last.v=b.v;
+      } else r.push({...b});
+    }
+    return r;
+  };
+  out=join(out);
+  out=out.filter(b=>b.b-b.a>=NOTE_MINLEN);
+  out=join(out);
+  /* cents＝實際唱的比那個半音高（正）或低（負）幾音分。100 音分＝一個半音 */
+  return out.map(b=>({n:b.n,a:b.a,b:b.b,v:b.v,cents:Math.round((b.sum/b.k-b.n)*100)}));
+}
 const f2m=f=>69+12*Math.log2(f/440), m2f=m=>440*Math.pow(2,(m-69)/12);
 const pick=a=>a[(Math.random()*a.length)|0];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>
@@ -1832,8 +1869,8 @@ function stopRecord(){
      四秒還沒好就當作沒有，不要讓畫面永遠卡在「處理中」。 */
   [300,900,2000].forEach(ms=>setTimeout(syncMixAvail,ms));
   setTimeout(()=>{ if(rawPending){ rawPending=false; syncMixAvail(); } },4000);
-  setTimeout(()=>{ drawRoll("cvV",curve,{span:span(),mark:draft?draft.mark:null,markEdit:true});
-    wireMark(); syncMarkUI(); },70);
+  vzoom=null;      // 新的一次錄音＝回到整首，不然會停在上一題放大的位置
+  setTimeout(()=>{ drawMarkNow(); wireMark(); syncMarkUI(); syncZoomUI(); },70);
 }
 /* 錄到一半發現唱壞了，直接從頭再來一次。
    ⚠ 要先把 mrec.onstop 拆掉，不然剛剛那段爛的原音還是會被寫進 draft。 */
@@ -2324,12 +2361,12 @@ function thud(){
    ⚠ 降框外，不要拉高框內：
    只做衰減就**不可能破音**，也不會去頂 0806g 才拉齊的天花板，
    而且框內原本的抑揚頓挫完全保留。混音上打聚光燈本來就是壓暗周圍，不是打亮主體。 */
-const MARK_DUCK_DEFAULT=6;   // dB。⚠ 暫定值，等 Alvis 用試聽畫面那排按鈕聽過再定案
+/* ⚠ 2026-08-06 Alvis 定案：固定降 7 dB，畫面上不給任何選項。
+   他的要求是「不要讓我選擇太多東西」——所以那排暫時的 4／6／9 按鈕拿掉了。
+   要調就改這個常數。 */
+const MARK_DUCK_DB=7;
 const MARK_DUCK_RAMP=0.10;   // 邊界斜坡幾秒。硬切會有「喀」一聲，聽起來像壞掉
-function markDuckDb(){
-  const v=parseFloat(localStorage.getItem("markDuck"));
-  return isFinite(v)?v:MARK_DUCK_DEFAULT;
-}
+function markDuckDb(){ return MARK_DUCK_DB; }
 /* 現在正在播的這條曲線，它的框是哪一個。
    ⚠ 用「曲線是不是同一個物件」去認，不要用畫面判斷——
    畫面會切換、會共用，物件比對才不會在揭曉那種畫面上抓到別題的框。 */
@@ -2432,12 +2469,15 @@ async function playAll(){ ensureMix(); await syncSynthNorm(); playFrom(0); }
    ⚠ 合成器不用改：scheduleSynth 的第五個參數本來就吃自訂曲線，
    而且它內部會做 p.t-fromT 把時間軸歸零，所以「切一段丟進去」就成立。
    ⚠ 這裡刻意不套框外衰減——你要聽的就是框裡面那一段，不需要對比。 */
-async function playRange(a,b){
+async function playRange(a,b,duck){
   ensureMix(); await syncSynthNorm();
   if(!curve||!curve.length||!AC) return false;
   if(!(b>a)) return false;
   stopSynth();
-  const seg=curve.filter(p=>p.t>=a&&p.t<=b);
+  /* duck＝要不要套框外衰減。「只聽框起來的」不用（本來就只有框裡面），
+     「從前 3 秒開始聽」要——那是在確認對方聽起來夠不夠明顯。 */
+  const base=duck?synthCurve():curve;
+  const seg=base.filter(p=>p.t>=a&&p.t<=b);
   if(seg.length<2) return false;
   const t0=AC.currentTime+0.06;
   const v=scheduleSynth(AC,instrGain||AC.destination,a,t0,seg);
@@ -2452,6 +2492,12 @@ async function playRange(a,b){
 function playMark(){
   const mk=draft&&draft.mark;
   if(mk&&mk.b>mk.a) playRange(mk.a,mk.b);
+}
+/* 「從前 3 秒開始聽」——只聽框裡面聽不出來那一段在整首的哪個位置，
+   前面墊一段就有上下文了。前面不足 3 秒就從頭開始。 */
+function playLeadIn(){
+  const mk=draft&&draft.mark;
+  if(mk&&mk.b>mk.a) playRange(Math.max(0,mk.a-3),mk.b,true);
 }
 
 /* ============ 會跟著音量張嘴的角色 ============
@@ -2970,9 +3016,10 @@ function redraw(head){
   if($("s-guess").classList.contains("on")) drawGuessRoll(head);
   else if($("s-res").classList.contains("on")) drawResultRoll(head);
   else if($("s-check").classList.contains("on"))
-    drawRoll("cvV",curve,{span:span(),head,mark:draft?draft.mark:null,markEdit:true});
+    drawRoll("cvV",curve,{span:span(),view:viewNow(),head,mark:draft?draft.mark:null,markEdit:true});
   else if($("s-room").classList.contains("on")&&$("rmLive").style.display!=="none")
-    drawRoll("cvLive",curve,{span:span(),head});
+    /* 直播那塊曲線是邊收邊長的，音名方塊會一直閃，所以那裡不畫 */
+    drawRoll("cvLive",curve,{span:span(),head,notes:false});
 }
 
 /* ============ 鋼琴捲軸 ============ */
@@ -2998,14 +3045,21 @@ function drawRoll(id,c,opt){
   }
   const g=cv.getContext("2d");
   g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
-  const X=t=>PADL+t/sp*(w-PADL-4), Y=m=>h-((m-lo)/(hi-lo))*h;
+  /* 看的是哪一段時間。沒給就是整首。
+     ⚠ 手機上整首擠在 300px 寬，一顆音只有幾 px，根本框不準——所以要能放大。 */
+  const vv=(opt.view&&opt.view.b>opt.view.a)?opt.view:{a:0,b:sp};
+  const va=Math.max(0,vv.a), vb=Math.min(sp,Math.max(va+0.05,vv.b));
+  const X=t=>PADL+(t-va)/(vb-va)*(w-PADL-4), Y=m=>h-((m-lo)/(hi-lo))*h;
   const rowH=Math.abs(Y(0)-Y(1));
+  /* ⚠ 每個音的橫列以「那個音本身」為正中心（Y(m±0.5)），不是 Y(m)～Y(m+1)。
+     本來是後者，結果左邊的音名畫在格子中間、音高點畫在格線上，整整差半格——
+     加了音名方塊之後就看得出來：方塊上寫 F4，卻跟左邊的 F4 對不起來。 */
   for(let m=lo;m<=hi;m++){
-    const y=Y(m), y2=Y(m+1);
-    if(BLACK[((m%12)+12)%12]){ g.fillStyle="#150f0a"; g.fillRect(PADL,y2,w-PADL,y-y2); }
+    const yTop=Y(m+0.5), yBot=Y(m-0.5);
+    if(BLACK[((m%12)+12)%12]){ g.fillStyle="#150f0a"; g.fillRect(PADL,yTop,w-PADL,yBot-yTop); }
     g.strokeStyle=(m%12===0)?"rgba(255,238,205,.13)":"rgba(255,238,205,.045)";
     g.lineWidth=1;
-    g.beginPath(); g.moveTo(PADL,y+0.5); g.lineTo(w,y+0.5); g.stroke();
+    g.beginPath(); g.moveTo(PADL,yBot+0.5); g.lineTo(w,yBot+0.5); g.stroke();
   }
   g.fillStyle="#120e0a"; g.fillRect(0,0,PADL,h);
   g.strokeStyle="rgba(255,238,205,.09)";
@@ -3014,19 +3068,53 @@ function drawRoll(id,c,opt){
   for(let m=lo;m<=hi;m++){
     if(rowH<13&&m%12!==0) continue;
     g.fillStyle=(m%12===0)?"#a49b8c":"#5f584e";
-    g.fillText(noteName(m),8,(Y(m)+Y(m+1))/2);
+    g.fillText(noteName(m),8,Y(m));      // 對齊那個音本身，跟方塊和音高點同一條水平線
   }
-  /* 音量用顏色和粗細一起表示，對比拉到最大：
-     小聲＝暗暗的土黃、細；大聲＝燒起來的正紅、粗，而且外面多一圈光。
+  /* 一顆一顆的音（像 Melodyne／Cubase）。畫在音高線「下面」，
+     所以看得到方塊（這個音是什麼）和線（他實際唱到哪）中間的落差。
+     方塊的顏色照準度分：準＝青、有點飄＝金、明顯歪＝紅。 */
+  if(opt.notes!==false){
+    const blocks=noteBlocks(c);
+    g.save();
+    g.textAlign="center"; g.textBaseline="middle";
+    for(const b of blocks){
+      const xa=Math.max(PADL,X(b.a)), xb=Math.min(w,X(b.b));
+      if(xb<=PADL||xa>=w) continue;
+      const bw=Math.max(2,xb-xa);
+      const yc=Y(b.n), bh=Math.max(9,rowH*0.86);
+      const off=Math.abs(b.cents);
+      const col=off<20?"90,214,196":(off<40?"245,185,66":"232,106,124");
+      g.fillStyle="rgba("+col+",.16)";
+      g.fillRect(xa,yc-bh/2,bw,bh);
+      g.strokeStyle="rgba("+col+",.7)"; g.lineWidth=1;
+      g.strokeRect(xa+0.5,yc-bh/2+0.5,bw-1,bh-1);
+      /* 夠寬才寫字，不然會疊成一團看不懂 */
+      if(bw>=26&&bh>=12){
+        g.fillStyle="rgba("+col+",.95)";
+        g.font="bold 11px ui-monospace,SFMono-Regular,Menlo,monospace";
+        const lab=noteName(b.n);
+        if(bw>=54&&off>=15){
+          /* 有空間就把「差幾音分」也寫出來——那就是唱不準的量 */
+          g.fillText(lab+" "+(b.cents>0?"+":"")+b.cents,(xa+xb)/2,yc);
+        } else g.fillText(lab,(xa+xb)/2,yc);
+      }
+    }
+    g.restore();
+    g.textAlign="left"; g.textBaseline="middle";
+  }
+  /* 音量用顏色和粗細一起表示。2026-08-06 Alvis 要的色階：
+     **小聲＝淺藍、大聲＝亮紅**（本來是土黃→紅，大小聲看起來差不多）。
+     ⚠ 中間刻意走紫色，不走綠色——藍→綠→黃→紅是彩虹，看不出強弱順序；
+     藍→紫→紅才會讀成「同一件事的深淺」。
      pow(v,0.62) 是為了讓中間音量的差別也看得出來，不然只有最大聲那幾格在變。 */
   for(const p of c){
     if(p.m===null) continue;
     const v=Math.max(0,Math.min(1,p.v));
     const e=Math.pow(v,0.62);
-    const hue=Math.round(52-52*e);      // 52 土黃 → 0 正紅
-    const sat=Math.round(34+66*e);      // 34% → 100%
-    const lit=Math.round(24+36*e);      // 24% → 60%
-    const hh=2.4+6.4*e;                 // 細 → 粗
+    const hue=Math.round(205+155*e)%360;   // 205 淺藍 → 282 紫 → 360(＝0) 亮紅
+    const sat=Math.round(52+48*e);         // 52% → 100%
+    const lit=Math.round(72-20*e);         // 72% 淺 → 52% 濃
+    const hh=2.4+6.4*e;                    // 細 → 粗
     const x=X(p.t), y=Y(p.m);
     if(e>0.66){                          // 夠大聲才給光暈（用一塊半透明的，比 shadowBlur 省很多）
       g.fillStyle="hsla("+hue+","+sat+"%,"+Math.min(72,lit+14)+"%,"+(0.16+0.3*(e-0.66)/0.34)+")";
@@ -3081,6 +3169,15 @@ function drawRoll(id,c,opt){
     g.moveTo(hx-6,0); g.lineTo(hx+6,0); g.lineTo(hx,9); g.closePath(); g.fill();
     g.restore();
   }
+  /* 放大之後底下放一條細帶，標出「現在看的是整首的哪一段」。
+     沒有它的話一放大就會迷路，不知道自己在哪。 */
+  if(vb-va<sp-0.01){
+    const bh=5, by=h-bh;
+    g.fillStyle="rgba(255,238,205,.10)"; g.fillRect(PADL,by,w-PADL-4,bh);
+    g.fillStyle="rgba(245,185,66,.85)";
+    const iw=w-PADL-4;
+    g.fillRect(PADL+va/sp*iw,by,Math.max(3,(vb-va)/sp*iw),bh);
+  }
 }
 /* 猜的畫面也要看得到框——那正是它的用途：讓人知道要聽哪一段。
    ⚠ 沒有 markEdit，所以猜的人看得到框但拖不動。 */
@@ -3096,17 +3193,74 @@ function drawResultRoll(head){ drawRoll("cvR",curve,{span:span(),head,mark:markO
 
    ⚠ 只綁在試聽畫面的 cvV。那塊畫布沒有「壓住重聽」的手勢，
    拖曳可以放心拿來框選；猜的畫面（cvG）有那個手勢，不能搶。 */
-let markDrag=null;
+/* ---- 縮放：手機上整首擠在 300px 寬，一顆音只有幾 px，根本框不準 ---- */
+let vzoom=null;                  // 現在看的範圍 {a,b}；null＝整首
+const VIEW_MIN=0.35;             // 最多放大到剩 0.35 秒，再小就沒東西可看了
+function viewNow(){
+  const sp=span();
+  if(!vzoom) return {a:0,b:sp};
+  const w=Math.min(sp,Math.max(VIEW_MIN,vzoom.b-vzoom.a));
+  const a=Math.max(0,Math.min(sp-w,vzoom.a));
+  return {a,b:a+w};
+}
+function setView(a,b){
+  const sp=span();
+  const w=Math.max(VIEW_MIN,Math.min(sp,b-a));
+  vzoom=(w>=sp-0.001)?null:{a:Math.max(0,Math.min(sp-w,a)),b:0};
+  if(vzoom) vzoom.b=vzoom.a+w;
+  drawMarkNow(); syncZoomUI();
+}
+/* 以 center 那個時間點為錨放大縮小——它在畫面上的相對位置會留在原地 */
+function zoomBy(f,center){
+  const v=viewNow(), sp=span(), cw=v.b-v.a;
+  const nw=Math.min(sp,Math.max(VIEW_MIN,cw*f));
+  const c=(center==null)?(v.a+v.b)/2:Math.max(v.a,Math.min(v.b,center));
+  const r=(c-v.a)/cw;
+  setView(c-r*nw,c-r*nw+nw);
+}
+/* 有框就以框的中心放大——那才是他想看清楚的地方 */
+function zoomCenter(){
+  const mk=draft&&draft.mark;
+  const v=viewNow();
+  if(mk&&mk.b>mk.a){
+    const c=(mk.a+mk.b)/2;
+    if(c>=v.a&&c<=v.b) return c;
+  }
+  return null;
+}
+function zoomIn(){ zoomBy(1/1.7,zoomCenter()); }
+function zoomOut(){ zoomBy(1.7,zoomCenter()); }
+function zoomAll(){ setView(0,span()); }
+function syncZoomUI(){
+  const v=viewNow(), sp=span(), on=(v.b-v.a)<sp-0.01;
+  const a=$("zoomall"); if(a) a.style.visibility=on?"visible":"hidden";
+  const n=$("zoomnote");
+  if(n) n.textContent=on?("放大中："+(Math.round(v.a*10)/10)+"–"+(Math.round(v.b*10)/10)+" 秒")
+                       :"整首";
+  const i=$("zoomin"); if(i) i.disabled=(v.b-v.a)<=VIEW_MIN+0.001;
+}
+
+let markDrag=null, pinch=null;
+const mkPts=new Map();
 function wireMark(){
   const cv=$("cvV"); if(!cv||cv.dataset.mk) return; cv.dataset.mk="1";
   const rect=()=>cv.getBoundingClientRect();
-  const posT=e=>{const r=rect();
-    return Math.max(0,Math.min(1,(e.clientX-r.left-PADL)/(r.width-PADL-4)))*span();};
-  const px=t=>{const r=rect();
-    return PADL+t/Math.max(0.001,span())*(r.width-PADL-4);};
+  const posT=e=>{const r=rect(), v=viewNow();
+    return v.a+Math.max(0,Math.min(1,(e.clientX-r.left-PADL)/(r.width-PADL-4)))*(v.b-v.a);};
+  const px=t=>{const r=rect(), v=viewNow();
+    return PADL+(t-v.a)/Math.max(0.001,v.b-v.a)*(r.width-PADL-4);};
   cv.addEventListener("pointerdown",e=>{
     if(!draft||!curve||!curve.length) return;
     e.preventDefault(); try{cv.setPointerCapture(e.pointerId);}catch(_){}
+    mkPts.set(e.pointerId,{x:e.clientX});
+    /* 兩根手指＝縮放。剛剛在拉的框要取消掉，不然會一邊縮放一邊亂框 */
+    if(mkPts.size===2){
+      markDrag=null;
+      const xs=[...mkPts.values()].map(p=>p.x);
+      pinch={d:Math.max(8,Math.abs(xs[0]-xs[1])),v:viewNow(),mid:(xs[0]+xs[1])/2};
+      return;
+    }
+    if(mkPts.size>2) return;
     const x=e.clientX-rect().left, mk=draft.mark;
     /* 先看有沒有抓到把手。24px 是抓取範圍，比畫出來的把手大，手指才好按 */
     if(mk){
@@ -3118,6 +3272,21 @@ function wireMark(){
     drawMarkNow();
   });
   cv.addEventListener("pointermove",e=>{
+    if(mkPts.has(e.pointerId)) mkPts.get(e.pointerId).x=e.clientX;
+    if(pinch&&mkPts.size>=2){
+      e.preventDefault();
+      const xs=[...mkPts.values()].map(p=>p.x);
+      const r=rect(), inner=Math.max(1,r.width-PADL-4);
+      const d=Math.max(8,Math.abs(xs[0]-xs[1]));
+      /* 手指張開＝距離變大＝看的範圍要變小 */
+      const nw=Math.max(VIEW_MIN,Math.min(span(),(pinch.v.b-pinch.v.a)*(pinch.d/d)));
+      const aR=Math.max(0,Math.min(1,(pinch.mid-r.left-PADL)/inner));
+      const aT=pinch.v.a+aR*(pinch.v.b-pinch.v.a);          // 錨在哪個時間點
+      const midNow=(xs[0]+xs[1])/2;
+      const cR=Math.max(0,Math.min(1,(midNow-r.left-PADL)/inner));
+      setView(aT-cR*nw,aT-cR*nw+nw);                        // 兩指一起移動＝順便平移
+      return;
+    }
     if(!markDrag||!draft||!draft.mark) return;
     e.preventDefault();
     const t=posT(e);
@@ -3125,7 +3294,10 @@ function wireMark(){
     drawMarkNow();
   });
   ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>
-    cv.addEventListener(ev,()=>{
+    cv.addEventListener(ev,e=>{
+      if(e&&e.pointerId!=null) mkPts.delete(e.pointerId);
+      if(mkPts.size<2) pinch=null;
+      /* 縮放完最後一根手指放開，不該被當成框選收尾 */
       if(!markDrag) return;
       markDrag=null;
       const mk=draft&&draft.mark;
@@ -3145,7 +3317,7 @@ function wireMark(){
   cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
 }
 function drawMarkNow(){
-  drawRoll("cvV",curve,{span:span(),mark:draft?draft.mark:null,markEdit:true});
+  drawRoll("cvV",curve,{span:span(),view:viewNow(),mark:draft?draft.mark:null,markEdit:true});
 }
 function clearMark(){ if(draft){ draft.mark=null; drawMarkNow(); syncMarkUI(); } }
 function syncMarkUI(){
@@ -3157,18 +3329,8 @@ function syncMarkUI(){
       "對方一聽就知道要猜哪裡，但<b>不會知道是哪幾個字</b>。拖兩邊的把手可以微調。"
     : "在上面的波形上<b>拖一下</b>，把「要讓對方猜的那幾個字」圈起來。"+
       "<b>圈了對方才知道要猜哪一段</b>——不圈的話，他只能靠猜歌名。";
-  for(const id of ["markclear","markplay","duckrow"]){
-    const b=$(id); if(b) b.style.display=mk?"":"none";
-  }
-  const d=$("ducknow"); if(d) d.textContent=markDuckDb()>0?(markDuckDb()+" dB"):"關掉了";
-}
-/* ⚠ 暫時的：等 Alvis 聽過決定數字，之後把 duckrow 那一區和這支拿掉、改成常數 */
-function setDuck(db){
-  localStorage.setItem("markDuck",String(db));
-  synthNormFor=null;               // 換了衰減＝要重新量響度
-  syncMarkUI(); drawMarkNow();
-  const mk=draft&&draft.mark;
-  if(mk) playAll();                // 馬上整首播一次，才聽得出對比
+  const bClear=$("markclear"); if(bClear) bClear.style.display=mk?"":"none";
+  const bPlay=$("markplayrow"); if(bPlay) bPlay.style.display=mk?"":"none";
 }
 /* 猜的人看到的框（沒有把手，不能拖） */
 function markOf(i){ const q=pack[i]; return (q&&q.mark)?q.mark:null; }
@@ -4443,7 +4605,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0806j";
+const BUILD="0806k";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
