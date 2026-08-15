@@ -4095,12 +4095,27 @@ const VOICE_STUN=[
   {urls:"stun:stun.l.google.com:19302"},
   {urls:"stun:stun1.l.google.com:19302"}
 ];
-/* 有中繼帳號就把 null 換成下面這種東西，其他都不用動：
-   [{urls:"turn:你的網址:80",              username:"你的帳號", credential:"你的密碼"},
-    {urls:"turn:你的網址:443",             username:"你的帳號", credential:"你的密碼"},
-    {urls:"turn:你的網址:443?transport=tcp",username:"你的帳號", credential:"你的密碼"}]
-   ⚠ 443 走 TCP 那行不要漏掉——公司網路擋 UDP 的時候只剩那條過得去。 */
-const VOICE_TURN=null;
+/* ✅ 2026-08-15 補上了。Alvis 的 metered.ca 帳號（app 名稱 alvis）。
+   ⚠ 目前是 **500MB 試用方案**，不是 20GB 那個。後台「Change Plan」裡
+     還有一個「Free: 20GB」也是免費的，按一下就換過去，不用重貼帳密。
+     用完會怎樣：TURN 直接停掉、語音退回原本會缺角的狀態，**不會扣錢**
+     （後台的自動扣款是關的）。
+   ⚠ 這組帳密會跟著網頁公開出去，任何人看原始碼都拿得到。純網頁的遊戲沒得躲。
+     被盜用最慘就是額度被吃光、語音停掉，不會有帳單。真的被吃光就去後台
+     Remove 這組、再產生一組新的貼回來。
+   ⚠ 四條 turn 都要留：80／80-TCP／443／443-TLS。
+     公司網路擋 UDP 的時候，只剩最後那兩條過得去。 */
+const VOICE_TURN=[
+  {urls:"stun:stun.relay.metered.ca:80"},
+  {urls:"turn:global.relay.metered.ca:80",
+   username:"f2d7abcbeefdfe81e39a7522", credential:"w+CCXZm9d+cGSmoV"},
+  {urls:"turn:global.relay.metered.ca:80?transport=tcp",
+   username:"f2d7abcbeefdfe81e39a7522", credential:"w+CCXZm9d+cGSmoV"},
+  {urls:"turn:global.relay.metered.ca:443",
+   username:"f2d7abcbeefdfe81e39a7522", credential:"w+CCXZm9d+cGSmoV"},
+  {urls:"turns:global.relay.metered.ca:443?transport=tcp",
+   username:"f2d7abcbeefdfe81e39a7522", credential:"w+CCXZm9d+cGSmoV"}
+];
 let voiceRoom=null, voiceStream=null, voicePeers={}, voiceState="off", voiceWhy="";
 /* 「找到過的人」和「真的聽得到的人」分開記。
    ⚠ 這兩個數字差在哪，決定了要修哪裡：
@@ -5988,7 +6003,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0815c";
+const BUILD="0815d";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
