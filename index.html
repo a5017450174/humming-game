@@ -986,7 +986,8 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
   <div class="shell">
     <div class="core pad-s teal">
-      <div class="betline">你賭 <span class="who" id="tkPick">—</span> 會第一個猜到</div>
+      <!-- ⚠ 不要再寫「你賭誰」——2026-08-15 之後是系統指定的，不是他選的。 -->
+      <div class="betline">這輪唱給 <span class="who" id="tkPick">—</span> 聽</div>
       <p class="tiny" style="margin:0">被別人先猜到就白唱了。挑一條只有他懂的路。</p>
     </div>
   </div>
@@ -4252,7 +4253,9 @@ function renderVoice(){
                          : '還沒找到其他人';
     el.innerHTML=(miss>0&&others>0)
       ? '<i class="dot rec"></i><b class="gold">語音缺 '+miss+' 個人</b>——'+
-        '房間 '+others+' 個人，找到 '+seen+' 個、聽得到 '+n+' 個。'+why+'。'+
+        /* ⚠ 這裡算的是「除了你以外的人」。寫「房間 N 個人」會跟上面的
+           「房號 5330　4 人」對不起來，看的人會以為數字錯了。 */
+        '另外 '+others+' 個人裡，找到 '+seen+' 個、聽得到 '+n+' 個。'+why+'。'+
         '再等十秒還是這樣就改開 Discord，遊戲本身照玩。'+
         (muted?'　<b class="gold">（你的麥克風已經關掉，輪到你出題）</b>':'')
       : '<i class="dot wait"></i>語音通了，聽得到 '+n+' 個人'+
@@ -4590,7 +4593,9 @@ function renderRoom(){
       ? '<span class="mic'+((p.mic||0)>2?" live":"")+'"><i style="width:'+
         Math.min(100,(p.mic||0))+'%"></i></span>'
       : '')+
-    '<span class="sg">'+(showMic?((p.mic||0)>2?'有聲音':'沒聲音'):((p.score||0)+' 分'))+
+    /* ⚠ 不要寫「沒聲音」。分頁在背景的人音量表會停止更新，
+       看起來就跟麥克風壞掉一模一樣——那是冤枉他。寫「還沒出聲」兩種情況都成立。 */
+    '<span class="sg">'+(showMic?((p.mic||0)>2?'有聲音':'還沒出聲'):((p.score||0)+' 分'))+
     '</span></div>').join("");
   micWatch(showMic);
   $("roomcount").textContent=list.length;
@@ -4840,8 +4845,9 @@ async function setupLive(){
     const bp=(room.players||{})[room.pick]||{};
     const bw=(room.players||{})[pz.by]||{};
     $("livebet").style.display="";
-    $("livebet").innerHTML=esc(bw.name||"他")+' 賭 <b class="gold">'+esc(bp.name||"？")+
-      '</b> 會第一個猜到'+(room.pick===myId?'　<b class="gold">← 就是你</b>':'');
+    /* ⚠ 不要再寫「X 賭 Y」——2026-08-15 之後是系統指定的，不是出題的人選的。 */
+    $("livebet").innerHTML=esc(bw.name||"他")+' 這輪要唱給 <b class="gold">'+esc(bp.name||"？")+
+      '</b> 聽'+(room.pick===myId?'　<b class="gold">← 就是你</b>':'');
   }else $("livebet").style.display="none";
 
   /* 直播中不能倒帶（Alvis 選的：就是直播），確認後才開放重播 */
@@ -5384,6 +5390,13 @@ document.addEventListener("visibilitychange",()=>{
 
 async function talkDown(){
   if(talking||!Net) return;
+  /* ⚠ 分頁已經在背景的時候不要開始錄。下面那個 visibilitychange 保護
+     只在「切換的那一刻」觸發，已經在背景才按的話它永遠不會跳，
+     人會一直按著以為在傳，其實一格都沒錄到。（2026-08-15 測到的洞） */
+  if(document.hidden){
+    const w0=$("talkhid"); if(w0) w0.style.display="";
+    return;
+  }
   const w=$("talkhid"); if(w) w.style.display="none";
   talking=true; setPtt(true);
   talkSeg++;
@@ -6003,7 +6016,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0815d";
+const BUILD="0815e";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
