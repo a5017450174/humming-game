@@ -190,6 +190,64 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
 /* 歌詞不達意的教學圖：原圖是 2×2 的正方形（AI 生圖對長條比例很不穩，
    所以這張不是四格橫排，是四格田字）。桌機手機都排兩列兩格。 */
+/* ---------- 六個角色 ---------- */
+.ch{display:block;filter:drop-shadow(0 0 7px rgba(245,185,66,.26))}
+/* ⚠ SVG 裡面要轉東西一定要加 transform-box:fill-box，
+   不然 transform-origin 是算整張畫布的原點，一轉就飛出去。 */
+.ch g{transform-box:fill-box;transform-origin:center}
+.ch .mo{transform-origin:center top}
+.chgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.chbtn{background:rgba(0,0,0,.28);border:1.5px solid var(--hair);border-radius:16px;
+  padding:10px 4px 8px;cursor:pointer;text-align:center;font-family:inherit;color:inherit;
+  transition:border-color .2s var(--spring),background .2s var(--spring)}
+.chbtn .ch{width:54px;height:54px;margin:0 auto}
+.chbtn span{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
+.chbtn.on{border-color:var(--gold);background:rgba(245,185,66,.1)}
+.chbtn.on span{color:var(--gold);font-weight:700}
+.chbtn.taken{opacity:.34;cursor:not-allowed}
+
+/* 這輪要唱給誰 */
+.assign{display:flex;flex-direction:column;align-items:center;gap:2px}
+.assign .art .ch{width:120px;height:120px}
+.assign .nm{font-size:27px;font-weight:800;color:var(--gold);letter-spacing:.04em}
+
+/* 台上一個、台下一排背影 */
+.stage2{position:relative;width:100%;height:230px;border-radius:20px;overflow:hidden;
+  background:#0a0806;border:1px solid var(--hair)}
+.stage2 .spot{position:absolute;left:50%;top:-46%;width:78%;height:132%;
+  transform:translateX(-50%);pointer-events:none;
+  background:radial-gradient(ellipse at 50% 34%,rgba(245,185,66,.24),transparent 62%)}
+.stage2 .up{position:absolute;left:50%;top:8px;transform:translateX(-50%);text-align:center}
+.stage2 .up .ch{width:104px;height:104px;filter:drop-shadow(0 0 16px rgba(245,185,66,.5))}
+.stage2 .who{font-size:14px;color:var(--gold);font-weight:700}
+.stage2 .who span{display:block;font-size:11px;color:var(--dim);font-weight:400;
+  letter-spacing:.1em;margin-top:1px}
+.stage2 .down{position:absolute;left:0;right:0;bottom:4px;display:flex;
+  justify-content:center;align-items:flex-end;gap:1px;padding:0 6px}
+/* ⚠ 台下的人要會自己縮。六個人以上的時候固定寬度會擠出螢幕外，
+   最邊邊那隻直接被切掉一半。 */
+.stage2 .down .seat{position:relative;text-align:center;flex:0 1 auto;min-width:0}
+.stage2 .down .ch{width:56px;height:56px;max-width:100%;margin:0 auto;
+  filter:drop-shadow(0 0 5px rgba(0,0,0,.9))}
+/* ⚠ 名字本來壓在角色頭上，人一多就整片糊掉。改放腳下。 */
+.stage2 .down .tag{font-size:10.5px;color:var(--faint);line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.stage2 .down .seat.mine .tag{color:var(--teal)}
+.stage2 .down .seat.tgt .tag{color:var(--gold);font-weight:700}
+/* 台下的人慢慢晃，每隻錯開，不然一排看起來像貼紙 */
+.stage2 .down .seat:nth-child(1) .hd{animation:chidle 3.1s ease-in-out infinite}
+.stage2 .down .seat:nth-child(2) .hd{animation:chidle 3.6s ease-in-out .4s infinite}
+.stage2 .down .seat:nth-child(3) .hd{animation:chidle 2.8s ease-in-out .9s infinite}
+.stage2 .down .seat:nth-child(4) .hd{animation:chidle 3.9s ease-in-out .2s infinite}
+.stage2 .down .seat:nth-child(5) .hd{animation:chidle 3.3s ease-in-out .7s infinite}
+@keyframes chidle{0%,100%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}}
+@media (max-width:640px){
+  .stage2{height:200px}
+  .stage2 .up .ch{width:88px;height:88px}
+  .stage2 .down .ch{width:52px;height:52px}
+  .assign .art .ch{width:104px;height:104px}
+}
+
 /* 收起來的「其他玩法」。點一下才展開，首頁才不會一次丟四種玩法給新玩家。 */
 .more{border:1px solid var(--hair);border-radius:var(--r-in);
   background:rgba(255,240,210,.02)}
@@ -894,21 +952,20 @@ input[readonly]{font-size:13px;color:var(--dim)}
 <div id="s-bet" class="screen">
   <div class="stack tight">
     <div class="eyebrow r"><i></i>你的麥克風已經關掉了</div>
-    <div class="eyebrow"><i></i>你藏的是「<b id="btWord" class="gold"></b>」</div>
-    <h2>誰一定聽得懂？</h2>
+    <h2>這輪你要唱給他聽</h2>
+  </div>
+  <div class="assign">
+    <div class="art" id="btWhoArt"></div>
+    <div class="nm" id="btWho">—</div>
   </div>
   <!-- ⚠ 2026-08-15 砍掉三段字。這一頁在倒數，他沒空讀：
        ・戴耳機／視窗不要蓋住 → 搬到大廳（等人的時候最閒，本來就寫在那）
        ・「被別人搶先就白唱了、他沒猜到你扣分」→ 揭曉的時候再講，那時他才有空看
        ・「一次只能賭一個人，全場都看得到你賭誰」→ 點下去就知道了，不用先講 -->
-  <p class="dim">他<b>第一個</b>猜到，你們兩個都加分。</p>
-  <div class="shell">
-    <div class="core">
-      <div class="picklist" id="betList"></div>
-    </div>
-  </div>
-  <button class="btn go big wide" id="betGo" onclick="betConfirm()" disabled>
-    就他了，開始 <span class="cir">→</span></button>
+  <p class="dim">他<b>第一個</b>猜到，你們兩個都加分。<br>
+    挑一首<b>他一定會唱</b>的歌，不是你想唱的歌。</p>
+  <button class="btn go big wide" onclick="assignGo()">
+    知道了，來挑歌 <span class="cir">→</span></button>
 </div>
 
 <!-- ======== 歌詞不達意 B：按住才發聲 ======== -->
@@ -997,6 +1054,16 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
     <!-- ⚠ 只有房主看得到。其他人點了也沒用（只有房主能改玩法、能開始），
          但畫面沒講，他們會坐在那邊研究三段說明，研究完才發現不干自己的事。 -->
+    <!-- 選角色。⚠ 一人一隻不能重複——台下那排如果有兩隻一樣的，認人就失效了，
+         整個台上台下的功能也就白做。沒選的人開場會自動配一隻，畫面不會空著。 -->
+    <div class="shell" id="chBox">
+      <div class="core">
+        <div class="eyebrow t"><i></i>挑一隻代表你</div>
+        <div class="chgrid" id="chPick"></div>
+        <p class="tiny" style="text-align:center">輪到你唱的時候，你這隻會站到台上。
+          其他人在台下看你的背影。</p>
+      </div>
+    </div>
     <div class="shell" id="modeBox">
       <div class="core">
         <div class="eyebrow t"><i></i>要玩哪一種</div>
@@ -1566,8 +1633,9 @@ function show(id){
   $(id).classList.add("on");
   scrollTo({top:0,behavior:"instant"});
   /* 角色和混音台都只有一份，會被搬來搬去。
-     先收起來，需要的畫面自己再叫一次 mountFace／mountMix。 */
-  mountFace(null); mountMix(null);
+     先收起來，需要的畫面自己再叫一次 mountFace／mountMix。
+     ⚠ 舞台也要一起收——不收的話它那個收尾迴圈會一直跑下去。 */
+  mountFace(null); mountMix(null); stageMount(null);
 }
 
 /* ============ 音色 ============
@@ -1980,10 +2048,8 @@ async function toRecord(){
   stopAll(); clearTimer(); rawClear();
   draft={target:w,song:$("mkSong").value.trim(),curve:null,raw:null,rawBlob:null};
   cur=[]; curve=null;
-  /* 歌詞不達意：挑完歌先賭一個人，賭完才開始說話。
-     ⚠ 順序不能反。先讓他說話的話，他會先亂唱試水溫、看誰反應最快，
-       再回頭賭那個人——那押注就沒有意義了。 */
-  if(isDiscord()){ betShow(); return; }
+  /* 歌詞不達意：要唱給誰在挑歌「之前」就指定好了，這裡直接開始說話。 */
+  if(isDiscord()){ talkBegin(); return; }
   $("rechead").innerHTML='謎底是「<span class="gold">'+esc(w)+'</span>」';
   armRecord();
 }
@@ -2774,6 +2840,9 @@ function pitchNorm(m){
 }
 
 function setFace(v,m){
+  /* 舞台上的角色也要跟著同一份音量／音高動。放在最前面，
+     因為大表情沒掛上去的時候下面就 return 了，舞台會收不到。 */
+  stageFace(v,m);
   if(!faceHost) return;
   v=Math.max(0,Math.min(1,v||0));
   /* 相對音量：唱歌大部分時間音量都卡在同一區，看絕對值的話嘴巴會一直開到底不動。
@@ -2822,9 +2891,220 @@ function setFace(v,m){
     "rotate("+(sw*amp*7).toFixed(2)+",110,205)");
   $("fWaves").style.opacity=Math.max(0,(faceSm-0.35)/0.5).toFixed(2);
 }
+/* ================= 六個角色 =================
+   大廳選一隻，輪到誰唱誰就上台，其他人是台下的背影。
+
+   ⚠ 用 SVG 畫不是圖檔——一隻幾百個字，六隻加起來還不到一張小圖。
+     這個檔案已經 500KB 出頭，再塞圖進去手機會載不動。
+   ⚠ 背影要認得出誰是誰，所以每隻的耳朵形狀刻意都不一樣
+     （尖角／長耳／垂耳／圓耳／呆毛／寬扁頭），背影再各加一個尾巴當第二個線索。
+     第一版熊和青蛙的背影量出來幾乎一樣，已經改掉。
+   ⚠ 可愛的三個關鍵（第一版三個全違反，Alvis 說「有一點醜」）：
+     線要粗、眼睛要大而且靠近、臉要畫在頭的下半部。 */
+const CHARS=[
+  {id:"cat", nm:"貓",   c:"#f5b942", c2:"#c9932c"},
+  {id:"rab", nm:"兔子", c:"#f0e0c0", c2:"#bda87f"},
+  {id:"dog", nm:"狗",   c:"#e8a05a", c2:"#b87434"},
+  {id:"bear",nm:"熊",   c:"#c98a4a", c2:"#8f5c2c"},
+  {id:"bird",nm:"小鳥", c:"#5fc9b4", c2:"#38907e"},
+  {id:"frog",nm:"青蛙", c:"#93cf72", c2:"#5d9243"}
+];
+const CH_OUT="#2a1c0d";
+const CH_LN='stroke="'+CH_OUT+'" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"';
+
+function chEars(id,f){
+  const L=CH_LN;
+  switch(id){
+    case "cat":  return '<path d="M27 26 L31 3 L50 17 Z" fill="'+f+'" '+L+'/>'+
+                        '<path d="M73 26 L69 3 L50 17 Z" fill="'+f+'" '+L+'/>';
+    case "rab":  return '<ellipse cx="38" cy="17" rx="8.5" ry="16" fill="'+f+'" '+L+
+                        ' transform="rotate(-11 38 17)"/>'+
+                        '<ellipse cx="62" cy="17" rx="8.5" ry="16" fill="'+f+'" '+L+
+                        ' transform="rotate(11 62 17)"/>';
+    case "dog":  return '<ellipse cx="13" cy="54" rx="12" ry="23" fill="'+f+'" '+L+
+                        ' transform="rotate(-10 13 54)"/>'+
+                        '<ellipse cx="87" cy="54" rx="12" ry="23" fill="'+f+'" '+L+
+                        ' transform="rotate(10 87 54)"/>';
+    case "bear": return '<circle cx="27" cy="19" r="12" fill="'+f+'" '+L+'/>'+
+                        '<circle cx="73" cy="19" r="12" fill="'+f+'" '+L+'/>';
+    case "bird": return '<path d="M50 18 Q44 2 52 7 Q61 -1 57 15 Z" fill="'+f+'" '+L+'/>';
+    case "frog": return '<circle cx="30" cy="21" r="12" fill="'+f+'" '+L+'/>'+
+                        '<circle cx="70" cy="21" r="12" fill="'+f+'" '+L+'/>';
+  }
+  return "";
+}
+function chHead(id,f){
+  return id==="frog"
+    ? '<ellipse cx="50" cy="50" rx="34" ry="24" fill="'+f+'" '+CH_LN+'/>'
+    : '<circle cx="50" cy="43" r="29" fill="'+f+'" '+CH_LN+'/>';
+}
+function chBody(f){ return '<path d="M23 103 Q23 69 50 69 Q77 69 77 103 Z" fill="'+f+'" '+CH_LN+'/>'; }
+function chTail(id,f){
+  const L=CH_LN;
+  switch(id){
+    case "cat":  return '<path d="M76 97 Q96 92 90 72" fill="none" stroke="'+f+
+                        '" stroke-width="7" stroke-linecap="round"/>';
+    case "rab":  return '<circle cx="81" cy="95" r="8" fill="'+f+'" '+L+'/>';
+    case "dog":  return '<path d="M77 95 Q93 88 89 76" fill="none" stroke="'+f+
+                        '" stroke-width="7" stroke-linecap="round"/>';
+    case "bear": return '<circle cx="79" cy="97" r="6" fill="'+f+'" '+L+'/>';
+    case "bird": return '<path d="M72 100 Q92 96 88 84 L78 90 Z" fill="'+f+'" '+L+'/>';
+    case "frog": return '<ellipse cx="20" cy="99" rx="9" ry="5" fill="'+f+'" '+L+'/>'+
+                        '<ellipse cx="80" cy="99" rx="9" ry="5" fill="'+f+'" '+L+'/>';
+  }
+  return "";
+}
+function chFace(id,open){
+  const L=CH_LN;
+  const P=(cx,cy,r)=>'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#241a0e"/>'+
+    '<circle cx="'+(cx+r*0.34)+'" cy="'+(cy-r*0.36)+'" r="'+(r*0.34)+'" fill="#fff" opacity=".92"/>';
+  if(id==="frog"){
+    return P(30,21,5.2)+P(70,21,5.2)+
+      '<ellipse cx="24" cy="57" rx="6" ry="3.6" fill="#e87a54" opacity=".42"/>'+
+      '<ellipse cx="76" cy="57" rx="6" ry="3.6" fill="#e87a54" opacity=".42"/>'+
+      (open?'<g class="mo"><ellipse cx="50" cy="55" rx="11" ry="7.5" fill="#3a1d12" '+L+'/>'+
+            '<ellipse cx="50" cy="59" rx="6" ry="3.4" fill="#e87a54"/></g>'
+           :'<path d="M38 54 Q50 61 62 54" fill="none" '+L+'/>');
+  }
+  const eyes=P(42,50,5.4)+P(58,50,5.4);
+  const blush='<ellipse cx="28" cy="57" rx="6" ry="3.6" fill="#e87a54" opacity=".42"/>'+
+              '<ellipse cx="72" cy="57" rx="6" ry="3.6" fill="#e87a54" opacity=".42"/>';
+  if(id==="bird"){
+    return eyes+blush+(open
+      ? '<g class="mo"><path d="M40 57 L50 64 L60 57 Z" fill="#f5b942" '+L+'/>'+
+        '<path d="M42 72 L50 65 L58 72 Z" fill="#e8a05a" '+L+'/></g>'
+      : '<path d="M40 58 L50 70 L60 58 Z" fill="#f5b942" '+L+'/>');
+  }
+  return eyes+blush+(open
+    ? '<g class="mo"><ellipse cx="50" cy="63" rx="5.6" ry="7" fill="#3a1d12" '+L+'/>'+
+      '<ellipse cx="50" cy="66" rx="3.2" ry="3" fill="#e87a54"/></g>'
+    : '<path d="M44 62 Q50 67 56 62" fill="none" '+L+'/>');
+}
+function chNotes(c){
+  const n=(x,y,s,o)=>'<g fill="'+c+'" opacity="'+o+'" transform="translate('+x+' '+y+') scale('+s+')">'+
+    '<circle cx="0" cy="14" r="4"/><rect x="2.6" y="-2" width="2.2" height="16" rx="1"/>'+
+    '<path d="M4.8 -2 Q12 0 10 6 Q9 1 4.8 2 Z"/></g>';
+  return n(9,14,1,.95)+n(84,6,.78,.7);
+}
+/* mode：sing＝唱歌中（嘴巴張開＋音符）／front＝正面閉嘴／back＝背影 */
+function charSVG(id,mode){
+  const ch=CHARS.filter(x=>x.id===id)[0]||CHARS[0];
+  const back=(mode==="back"), f=back?ch.c2:ch.c;
+  const inner=back
+    ? '<g class="bd">'+chTail(ch.id,f)+chBody(f)+'</g><g class="hd">'+
+      chEars(ch.id,f)+chHead(ch.id,f)+'</g>'
+    : (mode==="sing"?chNotes(ch.c):"")+
+      '<g class="bd">'+chBody(f)+'</g><g class="hd">'+
+      chEars(ch.id,f)+chHead(ch.id,f)+chFace(ch.id,mode==="sing")+'</g>';
+  return '<svg viewBox="-2 -2 104 108" class="ch '+mode+'">'+inner+'</svg>';
+}
+/* 某個人現在是哪一隻。沒選過的就照名單順序給一隻，畫面上不會空著。 */
+function charOf(pid){
+  const ps=(room&&room.players)||{};
+  const p=ps[pid]||{};
+  if(p.ch&&CHARS.filter(c=>c.id===p.ch).length) return p.ch;
+  const ids=Object.keys(ps).sort((a,b)=>((ps[a].at||0)-(ps[b].at||0)));
+  const taken={}; ids.forEach(id=>{ if(ps[id].ch) taken[ps[id].ch]=1; });
+  const free=CHARS.filter(c=>!taken[c.id]);
+  const rank=ids.indexOf(pid);
+  return (free[rank%Math.max(1,free.length)]||CHARS[rank%CHARS.length]).id;
+}
+async function pickChar(id){
+  if(!Net||!myId) return;
+  const ps=(room&&room.players)||{};
+  for(const k in ps) if(k!==myId&&ps[k].ch===id) return;   // 被別人選走了
+  await Net.set("players/"+myId+"/ch",id);
+}
+function renderCharPick(){
+  const box=$("chPick"); if(!box) return;
+  const ps=(room&&room.players)||{};
+  const mine=(ps[myId]||{}).ch||"";
+  const taken={};
+  for(const k in ps) if(k!==myId&&ps[k].ch) taken[ps[k].ch]=(ps[k].name||"有人");
+  box.innerHTML=CHARS.map(c=>
+    '<button class="chbtn'+(taken[c.id]?" taken":"")+(mine===c.id?" on":"")+'"'+
+    (taken[c.id]?" disabled":"")+' onclick="pickChar(\''+c.id+'\')">'+
+    charSVG(c.id,"front")+'<span>'+(taken[c.id]?esc(taken[c.id]):c.nm)+'</span></button>').join("");
+}
+
+/* ---------- 台上台下 ----------
+   台上是這輪唱的人，台下是其他人的背影。
+   ⚠ 這一塊取代原本那顆大表情：高度差不多，但資訊多很多
+     （誰在唱、還有誰在場、你自己在哪、誰是這輪要聽懂的人）。 */
+let stageHost=null, stgSm=0, stgPeak=0.25, stgPn=0, stgLastFeed=0, stgRAF=null;
+function stageMount(slotId){
+  const slot=slotId?$(slotId):null;
+  if(!slot){
+    stageHost=null;
+    if(stgRAF){ cancelAnimationFrame(stgRAF); stgRAF=null; }
+    return;
+  }
+  /* ⚠ 下面會用 innerHTML 重寫這一格。大表情和混音台都只有一份、會被搬來搬去，
+     如果剛好停在這一格，重寫就等於把它們刪掉，之後誰要用誰就當掉。
+     先把它們請出去（丟回 body 藏著），需要的畫面自己會再搬回來。 */
+  ["facebox","mixbox"].forEach(id=>{
+    const b=$(id);
+    if(b&&slot.contains(b)){ b.classList.remove("on"); document.body.appendChild(b); }
+  });
+  const perf=performerId(), pick=(room&&room.pick)||null;
+  const list=playerList().slice().sort((a,b)=>(a.at||0)-(b.at||0));
+  const up=list.filter(p=>p.id===perf)[0];
+  const down=list.filter(p=>p.id!==perf);
+  slot.innerHTML=
+    '<div class="stage2"><div class="spot"></div>'+
+    '<div class="up">'+(up?charSVG(charOf(up.id),"sing"):"")+
+      '<div class="who">'+esc((up&&up.name)||"—")+'<span>正在唱</span></div></div>'+
+    '<div class="down">'+down.map(p=>
+      '<div class="seat'+(p.id===myId?" mine":"")+(p.id===pick?" tgt":"")+'">'+
+      charSVG(charOf(p.id),"back")+
+      '<div class="tag">'+(p.id===pick?"★ ":"")+esc(p.name||"?")+'</div></div>').join("")+
+    '</div></div>';
+  stageHost=slot; stgSm=0; stgPn=0; stgLastFeed=0;
+  stageApply();
+  if(!stgRAF) stgRAF=requestAnimationFrame(stageLoop);
+}
+/* 嘴巴跟著真實音量、頭跟著音高。
+   ⚠ 一定要接真的聲音，不能用循環動畫——沒出聲的時候嘴巴還在自己開合會很怪。
+     開得快、收得慢，跟原本那顆表情同一個做法（不然嘴巴會抖）。 */
+function stageFace(v,m){
+  if(!stageHost) return;
+  v=Math.max(0,Math.min(1,v||0));
+  stgPeak=Math.max(v,stgPeak*0.9995+0.00005);
+  const rel=Math.min(1,v/Math.max(0.12,stgPeak));
+  stgSm = rel>stgSm ? rel : stgSm*0.80+rel*0.20;
+  const pn=pitchNorm(m);
+  if(pn!==null) stgPn=stgPn*0.86+pn*0.14; else stgPn*=0.95;
+  if(v>0) stgLastFeed=performance.now();
+  stageApply();
+}
+function stageApply(){
+  if(!stageHost) return;
+  const mo=stageHost.querySelector(".up .mo");
+  if(mo) mo.style.transform="scaleY("+(0.3+stgSm*1.0).toFixed(2)+")";
+  const hd=stageHost.querySelector(".up .hd");
+  if(hd){
+    const sw=Math.sin(performance.now()/360)*stgSm*4.5;
+    hd.style.transform="translateY("+(-stgPn*5-stgSm*1.5).toFixed(1)+"px) rotate("+sw.toFixed(1)+"deg)";
+  }
+}
+/* ⚠ 唱完的時候只會被餵一次 0，而收合是漸進的（開得快收得慢，不然嘴巴會抖）——
+   一次收不完，那之後又沒有人再更新，嘴巴就卡在半開。
+   所以舞台要自己跑一個收尾迴圈：沒有新的音量進來就繼續收，收到閉上為止。
+   順便讓沒在唱的時候輕輕呼吸，畫面才不會像當掉。 */
+function stageLoop(){
+  if(!stageHost){ stgRAF=null; return; }
+  if(performance.now()-stgLastFeed>120){
+    stgSm=stgSm>0.004?stgSm*0.86:0;
+    stgPn*=0.94;
+    stageApply();
+  }
+  stgRAF=requestAnimationFrame(stageLoop);
+}
+
 /* 把角色搬到某個畫面。big＝放大一點（錄音畫面用）。 */
 function mountFace(slotId,big){
   const box=$("facebox"), slot=slotId?$(slotId):null;
+  if(!box) return;                      // 被誰刪掉了也不要整個當掉
   if(!slot){ box.classList.remove("on"); faceHost=null; return; }
   if(box.parentNode!==slot) slot.appendChild(box);
   box.classList.add("on");
@@ -2945,6 +3225,7 @@ function mountMix(slotId,opt){
   opt=opt||{};
   mixOpt=opt;
   const box=$("mixbox"), slot=slotId?$(slotId):null;
+  if(!box) return;                      // 被誰刪掉了也不要整個當掉
   if(!slot){ box.classList.remove("on"); return; }
   if(box.parentNode!==slot) slot.appendChild(box);
   box.classList.add("on");
@@ -4194,6 +4475,9 @@ function renderRoom(){
     $("hostStart").style.display=isHost?"":"none";
     $("waitHost").style.display=isHost?"none":"";
     $("modeBox").style.display=isHost?"":"none";
+    /* 選角色只有歌詞不達意用得到——其他玩法沒有台上台下 */
+    $("chBox").style.display=isDiscord()?"":"none";
+    if(isDiscord()) renderCharPick();
     /* ⚠ 歌詞不達意至少要三個人：一個出題、一個被指定、
        還要有第三個人可能搶先——兩個人的話「被別人搶走」永遠不會發生，
        押注就只剩「他猜不猜得到」，少了一半的戲。 */
@@ -4228,7 +4512,10 @@ function renderRoom(){
       if(!$("s-make").classList.contains("on")&&!$("s-rec").classList.contains("on")
          &&!$("s-check").classList.contains("on")&&!$("s-bet").classList.contains("on")){
         mode="room"; pack=[]; draft=null; curve=null;
-        toMake();
+        /* ⚠ 歌詞不達意先看「這輪唱給誰」，再挑歌。順序不能反——
+           先挑歌的話他是在想「我這首誰會懂」，那就退回舊玩法了。 */
+        if(isDiscord()&&room.pick) assignShow();
+        else toMake();
       }
       return;
     }
@@ -4270,6 +4557,59 @@ async function nextOrMore(){
   startRound();
 }
 
+/* ================= 誰唱給誰：系統指定 =================
+   三條規則（2026-08-15 Alvis 和 Claude 一起定的，細節在 玩法框架_討論中.md）：
+   ① 不會指到自己
+   ② 這一圈裡每個人剛好被指到一次    ← 公平靠這條
+   ③ 還沒輪完全部之前不會重複同一個人 ← 「不會永遠跟同一個人配」靠這條
+
+   ⚠ 不是「每圈往後推一格」。那樣是公平，但第一圈就知道自己永遠指右手邊那個，
+     揭曉完全沒張力。這裡是帶回溯的隨機排列：隨機試，排不出來就退一步換一個。
+     五個人的規模瞬間跑完。
+   ⚠ 也不是純隨機。純隨機會連續指到同一個人，也會有人整場沒被指到。 */
+function buildLap(ids,used){
+  const n=ids.length; if(n<2) return null;
+  const lap={}, taken={};
+  const mix=a=>{ a=a.slice();
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a; };
+  const place=k=>{
+    if(k===n) return true;
+    const from=ids[k], done=(used&&used[from])||{};
+    for(const to of mix(ids)){
+      if(to===from||taken[to]||done[to]) continue;
+      lap[from]=to; taken[to]=1;
+      if(place(k+1)) return true;
+      delete taken[to]; delete lap[from];
+    }
+    return false;
+  };
+  return place(0)?lap:null;
+}
+/* 排出這一輪要唱給誰，寫進房間。回傳被指定的人的 id。
+   ⚠ 有人中途進出會讓整張表失效，那時候就重排——
+     重排的那一圈「每個人剛好被指到一次」會斷一次，這是可以接受的代價。 */
+async function assignPick(ids,performer,r){
+  let lap=(room&&room.lap)||null, used=(room&&room.used)||{};
+  const lapOK = lap && Object.keys(lap).length===ids.length
+    && ids.every(id=>lap[id]&&ids.indexOf(lap[id])>=0);
+  const lapStart=(room&&room.lapStart)||r;
+  if(!lapOK || (r-lapStart)>=ids.length){
+    let nl=buildLap(ids,used);
+    if(!nl){ used={}; nl=buildLap(ids,{}); }   // 全部組合都輪過了，收回來重洗
+    lap=nl||{};
+    await Net.set("lap",lap);
+    await Net.set("lapStart",r);
+  }
+  const pick=lap[performer]||null;
+  if(pick){
+    used[performer]=Object.assign({},used[performer]||{},{[pick]:1});
+    await Net.set("used",used);
+  }
+  await Net.set("pick",pick);
+  return pick;
+}
+
 async function startRound(){
   if(!isHost) return;
   const list=playerList();
@@ -4288,7 +4628,9 @@ async function startRound(){
   await Net.set("deadline",null);
   await Net.set("round",r);
   await Net.set("performer",next.id);
-  await Net.set("pick",null);        // 上一輪賭的是誰，清掉
+  /* 歌詞不達意：系統指定這輪要唱給誰。其他玩法沒有這個東西，清掉。 */
+  if(md==="discord") await assignPick(order.map(p=>p.id),next.id,r);
+  else await Net.set("pick",null);
   await Net.set("state","compose");
 }
 
@@ -4371,7 +4713,12 @@ async function setupLive(){
   $("wrapLive").classList.toggle("nodrag",!canReplay);
   if(canReplay) wireLiveWave();
 
-  mountFace("fsLive"); faceIdle(true);
+  /* 歌詞不達意：這裡改放台上台下，不放大表情。
+     高度差不多，但一眼看得到誰在唱、還有誰在場、你自己在哪、誰要聽懂。
+     ⚠ 舞台已經自己組好 DOM，所以不能再 mountFace 到同一格，會互相蓋掉。 */
+  if(dc){ mountFace(null); stageMount("fsLive"); }
+  else { stageMount(null); mountFace("fsLive"); }
+  faceIdle(true);
   const me=amPerformer();
   $("livemine").style.display=me?"":"none";
   $("liveinput").style.display=me?"none":"";
@@ -4596,7 +4943,12 @@ async function renderReveal(){
   /* ⚠ 歌詞不達意不錄原音（一輪好幾分鐘，遠超過 1.2MB 上限，
      而且那段原音是他一直在唸關鍵字，本來也不適合公開）。
      所以沒有「聽聽看他到底在唱什麼」那一區。 */
-  if(isDiscord()){ const m=$("msReveal"); if(m) m.innerHTML=""; }
+  /* ⚠ 這裡本來是 msReveal.innerHTML=""。那會把「混音台」整個刪掉——
+     混音台只有一份，會被搬來搬去，上一輪玩搶答的時候它正好停在這一格。
+     刪掉之後任何畫面再叫 mountMix 就當掉（box 是 null）。
+     真人踩法：先玩搶答，再換歌詞不達意，揭曉就掛。2026-08-15 修。
+     正確做法是叫它收起來，不是刪掉。 */
+  if(isDiscord()) mountMix(null);
   else revealMix();
 }
 /* 揭曉之後大家都能聽唱的人的原音。
@@ -4793,24 +5145,23 @@ function monUnmute(){
 const TALK_SECS=180;          // 一輪最多三分鐘，時間到就揭曉
 let betOn=null;
 
-function betShow(){
-  betOn=null;
-  $("btWord").textContent=draft.target;
-  const others=playerList().filter(p=>p.id!==myId);
-  $("betList").innerHTML=others.map(p=>
-    '<button data-id="'+esc(p.id)+'" onclick="betPick(\''+esc(p.id)+'\')">'+
-      '<span class="nm">'+esc(p.name||"?")+'</span>'+
-      '<span class="tag">'+(p.score||0)+' 分</span></button>').join("");
-  $("betGo").disabled=true;
+/* ⚠ 2026-08-15 改掉：以前是「你自己選要唱給誰」，現在是系統指定。
+   為什麼要改：自己選的話，歌路像的兩個人會一直互丟——
+   那不只是無聊，是穩定的分數引擎，其他人追不上（跑過模擬，差距 29.6 分）。
+   而且自己選等於「難度旋鈕在出題的人手上」，他永遠可以轉到最鬆。
+
+   ⚠ 順序也反過來了：以前是「挑歌 → 選賭誰」，現在是「指定 → 挑歌」。
+   差別很大：前者是「我這首誰會懂」，後者是「小美會懂什麼」。
+   後者才是難題，也才是出題的人真正要煩惱的事。 */
+function assignShow(){
+  const pick=(room&&room.pick)||null;
+  betOn=pick;
+  const p=((room&&room.players)||{})[pick]||{};
+  $("btWho").textContent=p.name||"？";
+  $("btWhoArt").innerHTML=pick?charSVG(charOf(pick),"sing"):"";
   show("s-bet");
 }
-function betPick(id){
-  betOn=id;
-  document.querySelectorAll("#betList button").forEach(b=>
-    b.classList.toggle("on",b.dataset.id===id));
-  $("betGo").disabled=false;
-}
-function betConfirm(){ if(betOn) talkBegin(); }
+function assignGo(){ toMake(); }
 
 /* ================= 歌詞不達意：按住才發聲 =================
    一輪從頭到尾停在 live，出題的人想說幾次就說幾次，
@@ -5515,7 +5866,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0815a";
+const BUILD="0815b";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
