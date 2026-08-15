@@ -190,6 +190,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
 /* 歌詞不達意的教學圖：原圖是 2×2 的正方形（AI 生圖對長條比例很不穩，
    所以這張不是四格橫排，是四格田字）。桌機手機都排兩列兩格。 */
+/* 大廳的音量表。有聲音就亮綠色，一眼掃過去就知道誰的麥克風活著。 */
+.qcard .mic{flex:1;max-width:120px;height:8px;border-radius:99px;
+  background:rgba(0,0,0,.4);border:1px solid var(--hair);overflow:hidden}
+.qcard .mic i{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,var(--teal),var(--green));
+  transition:width .12s linear}
+.qcard .mic.live{border-color:rgba(147,207,114,.45)}
+.qcard .sg{white-space:nowrap}
+
 /* ---------- 六個角色 ---------- */
 .ch{display:block;filter:drop-shadow(0 0 7px rgba(245,185,66,.26))}
 /* ⚠ SVG 裡面要轉東西一定要加 transform-box:fill-box，
@@ -1248,6 +1257,10 @@ input[readonly]{font-size:13px;color:var(--dim)}
 <!-- ======== 會跟著音量張嘴的角色 ========
      整隻是畫出來的，沒有圖片檔——所以連結還是一條就能玩，
      而且嘴巴可以無段跟著音量變。需要的畫面就把它搬過去。 -->
+<!-- 別人的聲音掛在這裡。⚠ 一定要真的放進畫面，
+     用 new Audio() 但不放進 DOM 的話 iOS Safari 常常整個不出聲。 -->
+<div id="voicesink" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"></div>
+
 <div id="facebox" aria-hidden="true">
   <svg id="faceSvg" viewBox="0 22 220 186" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -4061,12 +4074,40 @@ function makeNet(){
      舊的那個在新版已經變成空殼，什麼都沒 export，照舊文件寫會拿到 undefined。
    ⚠ 選 nostr 版是因為它最輕，而且完全不碰我們的資料庫
      （firebase 版會再拉一整包 Firebase SDK，我們已經有一份了）。
-   ⚠ 只用 STUN，沒有 TURN（中繼）。家用網路大多穿得過去，
-     但公司網路、某些電信的對稱型 NAT 會連不上——連不上的人畫面上會標出來，
-     那時候就改用 Discord。真要補：去 metered.ca 註冊免費帳號（20GB/月），
-     把 iceServers 設定填進下面的 VOICE_TURN。 */
+   ⚠⚠ 2026-08-15 真人測試踩到：三個人，A 聽得到 B 和 C，但 B 和 C 只聽得到 A。
+     原因是**只有 STUN 沒有 TURN**。A 那台的網路比較寬鬆所以誰都連得到，
+     B 和 C 兩邊的路由器都擋（對稱型 NAT），兩個人之間就永遠接不起來。
+     手機吃 4G/5G 幾乎都是這種，所以人越多越容易缺角。
+     修法：補上 TURN 中繼。直連不通的時候，聲音會改走中繼繞過去。
+
+   ⚠⚠ 網路上到處抄的那組免費公開中繼（openrelay.metered.ca ＋
+     帳密 openrelayproject）**已經失效了**，官方自己說要重辦帳號。
+     2026-08-15 實際連過，拿不到中繼位址。抄那組進來只會拖慢連線，不要再抄。
+
+   要補中繼的話（十分鐘，一次做完永久有效）：
+     1. 去 https://dashboard.metered.ca/ 註冊免費帳號（每月 20GB，夠玩很久）
+     2. 它會給你一組 username 和 credential
+     3. 填進下面 VOICE_TURN，格式照註解那三行，存檔重新產生發佈檔就好
+
+   ⚠ 要知道的事：直連不通、改走中繼的時候，聲音會經過那家的伺服器
+     （內容還是加密的，他們解不開）。直連得通的時候完全不會經過。 */
+const VOICE_STUN=[
+  {urls:"stun:stun.l.google.com:19302"},
+  {urls:"stun:stun1.l.google.com:19302"}
+];
+/* 有中繼帳號就把 null 換成下面這種東西，其他都不用動：
+   [{urls:"turn:你的網址:80",              username:"你的帳號", credential:"你的密碼"},
+    {urls:"turn:你的網址:443",             username:"你的帳號", credential:"你的密碼"},
+    {urls:"turn:你的網址:443?transport=tcp",username:"你的帳號", credential:"你的密碼"}]
+   ⚠ 443 走 TCP 那行不要漏掉——公司網路擋 UDP 的時候只剩那條過得去。 */
 const VOICE_TURN=null;
 let voiceRoom=null, voiceStream=null, voicePeers={}, voiceState="off", voiceWhy="";
+/* 「找到過的人」和「真的聽得到的人」分開記。
+   ⚠ 這兩個數字差在哪，決定了要修哪裡：
+     找不到人   → 是「大家互相找到對方」那一層壞掉（中繼站掛了）
+     找到但沒聲 → 是網路穿不過去（要中繼伺服器 TURN）
+   2026-08-15 那次三個人只聽得到一個，就是因為分不出是哪一種，只能猜。 */
+let voiceSeen={};
 
 async function voiceJoin(code){
   if(voiceRoom||voiceState==="trying") return;
@@ -4080,24 +4121,38 @@ async function voiceJoin(code){
       audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
     });
     const cfg={appId:"humming-game-voice"};
-    if(VOICE_TURN) cfg.rtcConfig={iceServers:[VOICE_TURN]};
+    cfg.rtcConfig={iceServers:VOICE_STUN.concat(VOICE_TURN||[])};
+    /* ⚠ 2026-08-15 真人測試那次，主控台一直跳 wss://hol.is 和
+       wss://strfry.openhoofd.nl 連不上——那是「大家互相找到對方」用的中繼站。
+       中繼站掛掉的話，兩個人根本不知道對方存在，連試都不會試。
+       redundancy 是「同時連幾個中繼站」，預設偏少，開大一點就不會全押在掛掉的那台。
+       ⚠ 只調數量、不自己指定網址——指定一串我沒驗過的網址風險更大。 */
+    cfg.relayConfig={redundancy:5};
     voiceRoom=joinRoom(cfg,"talk-"+code);
     voiceRoom.addStream(voiceStream);
     /* ⚠ 這三個是「賦值」用的屬性，不是方法——
        寫成 onPeerJoin(fn) 會直接爆 "is not a function"。
        而且 addStream 的第二個參數要包成物件 {target:id}，不能直接丟 id。 */
     voiceRoom.onPeerJoin=id=>{           // 晚進來的人也要收得到我的聲音
+      voiceSeen[id]=1;                   // 記下「找到過這個人」，診斷用
       try{ voiceRoom.addStream(voiceStream,{target:id}); }catch(e){}
       renderVoice();
     };
     voiceRoom.onPeerStream=(s,id)=>{
-      if(voicePeers[id]){ try{ voicePeers[id].srcObject=null; }catch(e){} }
-      const a=new Audio(); a.srcObject=s; a.autoplay=true;
+      if(voicePeers[id]){ try{ voicePeers[id].remove(); }catch(e){} }
+      /* ⚠ 這個 <audio> 一定要放進畫面裡。用 new Audio() 但不放進 DOM 的話，
+         iOS Safari 常常整個不出聲——桌機沒事，所以很容易漏掉。
+         playsInline 也是 iOS 要的，不加會被當成要全螢幕播放。 */
+      const a=document.createElement("audio");
+      a.srcObject=s; a.autoplay=true; a.playsInline=true;
+      a.setAttribute("playsinline","");
+      a.style.display="none";
+      (document.getElementById("voicesink")||document.body).appendChild(a);
       a.play().catch(()=>{});      // 還沒碰過畫面的話會被擋，碰一下就會通
       voicePeers[id]=a; renderVoice();
     };
     voiceRoom.onPeerLeave=id=>{
-      if(voicePeers[id]){ try{ voicePeers[id].srcObject=null; }catch(e){} delete voicePeers[id]; }
+      if(voicePeers[id]){ try{ voicePeers[id].remove(); }catch(e){} delete voicePeers[id]; }
       renderVoice();
     };
     voiceState="on"; renderVoice();
@@ -4105,6 +4160,47 @@ async function voiceJoin(code){
     voiceState="fail"; voiceWhy=(e&&e.message)||String(e);
     renderVoice();
   }
+}
+
+/* ================= 大廳的音量表 =================
+   Alvis 要的：等人的時候看得到每個人的麥克風在跳，就知道誰有聲音。
+   做法：每個人自己量自己的音量，寫進 players/<id>/mic（0~100），大家都看得到。
+
+   ⚠ 量的是「語音那條流」，不是遊戲錄音那條——因為要回答的問題是
+     「別人聽不聽得到你」，那就要量真的送出去的那條。
+   ⚠ 一秒只寫五次。每一幀都寫的話，五個人就是每秒三百筆，資料庫會被灌爆。
+   ⚠ 只在大廳跑。玩起來之後那條會一直跳，很吵，而且那時候要看的是分數。 */
+let micAn=null, micBuf=null, micRAF=null, micLast=0, micSent=-1;
+function micWatch(on){
+  if(!on||!voiceStream||!Net){
+    if(micRAF){ cancelAnimationFrame(micRAF); micRAF=null; }
+    if(micSent>0&&Net&&myId){ micSent=0; try{ Net.set("players/"+myId+"/mic",0); }catch(e){} }
+    return;
+  }
+  if(micRAF) return;                       // 已經在跑了
+  try{
+    const ac=ensureAC();
+    if(!micAn){
+      micAn=ac.createAnalyser(); micAn.fftSize=1024;
+      micBuf=new Float32Array(micAn.fftSize);
+      ac.createMediaStreamSource(voiceStream).connect(micAn);
+    }
+  }catch(e){ return; }
+  const loop=()=>{
+    if(!voiceStream||!Net){ micRAF=null; return; }
+    micAn.getFloatTimeDomainData(micBuf);
+    let s=0; for(let i=0;i<micBuf.length;i++) s+=micBuf[i]*micBuf[i];
+    const rms=Math.sqrt(s/micBuf.length);
+    /* 開根號拉一下，小聲也看得到在動；不然講話時整條表只動兩三格 */
+    const v=Math.round(Math.min(100,Math.sqrt(rms)*260));
+    const now=performance.now();
+    if(now-micLast>200 && Math.abs(v-micSent)>=3){
+      micLast=now; micSent=v;
+      try{ Net.set("players/"+myId+"/mic",v); }catch(e){}
+    }
+    micRAF=requestAnimationFrame(loop);
+  };
+  micRAF=requestAnimationFrame(loop);
 }
 
 /* 輪到你出題，程式直接把你的麥克風關掉。
@@ -4115,20 +4211,37 @@ function voiceMute(on){
   voiceStream.getAudioTracks().forEach(t=>{ t.enabled=!on; });
 }
 function voiceLeave(){
+  micWatch(false); micAn=null; micBuf=null;
   try{ if(voiceRoom) voiceRoom.leave(); }catch(e){}
   try{ if(voiceStream) voiceStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-  for(const k in voicePeers){ try{ voicePeers[k].srcObject=null; }catch(e){} delete voicePeers[k]; }
-  voiceRoom=null; voiceStream=null; voiceState="off"; voiceWhy="";
+  for(const k in voicePeers){ try{ voicePeers[k].remove(); }catch(e){} delete voicePeers[k]; }
+  voiceRoom=null; voiceStream=null; voiceState="off"; voiceWhy=""; voiceSeen={};
 }
 function renderVoice(){
   const el=$("voiceline"); if(!el) return;
   if(!isDiscord()){ el.style.display="none"; return; }
   el.style.display="";
   const n=Object.keys(voicePeers).length;
+  const others=Math.max(0,playerList().length-1);
   const muted=voiceStream&&voiceStream.getAudioTracks().some(t=>!t.enabled);
   if(voiceState==="on"){
-    el.innerHTML='<i class="dot wait"></i>語音通了，聽得到 '+n+' 個人'+
-      (muted?'　<b class="gold">你的麥克風已經關掉（輪到你出題）</b>':'');
+    /* ⚠ 2026-08-15：本來只寫「語音通了，聽得到 N 個人」。
+       三個人實測的時候 B 和 C 互相聽不到，但畫面寫「通了」，
+       他們玩到一半才發現少一個人——壞掉卻看起來正常，是最糟的一種。
+       現在只要少一個就直接講「有人聽不到」，而且講出少幾個。 */
+    const miss=others-n, seen=Object.keys(voiceSeen).length;
+    /* 缺人的時候要講「缺在哪一層」，不然下次又只能猜。
+       找到的人比聽得到的多 ＝ 找得到但接不上 ＝ 網路擋住了（要中繼）
+       找到的人也不夠     ＝ 根本沒找到對方 ＝ 中繼站那層的問題 */
+    const why = (seen>n) ? '找得到他們，但聲音接不過去（網路擋住了）'
+                         : '還沒找到其他人';
+    el.innerHTML=(miss>0&&others>0)
+      ? '<i class="dot rec"></i><b class="gold">語音缺 '+miss+' 個人</b>——'+
+        '房間 '+others+' 個人，找到 '+seen+' 個、聽得到 '+n+' 個。'+why+'。'+
+        '再等十秒還是這樣就改開 Discord，遊戲本身照玩。'+
+        (muted?'　<b class="gold">（你的麥克風已經關掉，輪到你出題）</b>':'')
+      : '<i class="dot wait"></i>語音通了，聽得到 '+n+' 個人'+
+        (muted?'　<b class="gold">你的麥克風已經關掉（輪到你出題）</b>':'');
   }else if(voiceState==="trying"){
     el.innerHTML='<i class="dot wait"></i>正在接語音…';
   }else if(voiceState==="fail"){
@@ -4451,11 +4564,20 @@ function renderRoom(){
   renderVoice();
 
   /* 玩家名單（誰在唱會標出來） */
+  /* 等人的時候每個人旁邊放一條會跳的音量表——一眼就知道誰的麥克風真的有聲音。
+     ⚠ 只在大廳出現。玩起來之後那條會一直跳，很吵，而且那時候要看的是分數。 */
+  const showMic=(st==="lobby"&&isDiscord());
   $("roomplayers").innerHTML=list.map(p=>
     '<div class="qcard"><span class="w">'+esc(p.name||"?")+'</span>'+
     (p.id===performerId()?'<span class="n" style="color:var(--teal)">正在出題</span>':'')+
     (p.id===room.host?'<span class="n">房主</span>':'')+
-    '<span class="sg">'+(p.score||0)+' 分</span></div>').join("");
+    (showMic
+      ? '<span class="mic'+((p.mic||0)>2?" live":"")+'"><i style="width:'+
+        Math.min(100,(p.mic||0))+'%"></i></span>'
+      : '')+
+    '<span class="sg">'+(showMic?((p.mic||0)>2?'有聲音':'沒聲音'):((p.score||0)+' 分'))+
+    '</span></div>').join("");
+  micWatch(showMic);
   $("roomcount").textContent=list.length;
 
   /* 新的一輪：上一輪抓下來的原音要丟掉，不然會聽到上一題的 */
@@ -5866,7 +5988,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0815b";
+const BUILD="0815c";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
