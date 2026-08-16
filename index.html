@@ -555,6 +555,14 @@ input[readonly]{font-size:13px;color:var(--dim)}
 /* 謎底幾個字的空格子（2026-08-16 Alvis 要求要一眼看到） */
 .wblanks i{display:inline-block;width:26px;height:30px;border:2px dashed var(--gold);
   border-radius:7px;margin-right:5px;vertical-align:middle;opacity:.85}
+/* 選麥克風那排＋朋友個別音量（2026-08-16） */
+.microw{display:flex;gap:8px;align-items:center;margin:6px 0}
+.microw select{flex:1;min-width:0;background:#181510;color:#e8e2d0;border:1px solid #4a4436;
+  border-radius:8px;padding:6px 8px;font-size:13px}
+.vvrow{display:flex;gap:10px;align-items:center;margin:4px 0}
+.vvrow .vvname{min-width:64px;text-align:left;font-size:13px}
+.vvrow input[type=range]{flex:1;accent-color:var(--gold)}
+.vvrow b{min-width:44px;text-align:right}
 </style>
 </head>
 <body>
@@ -619,6 +627,12 @@ input[readonly]{font-size:13px;color:var(--dim)}
       <div class="row" style="align-items:center">
         <button class="btn sm" onclick="checkMic()">檢查麥克風</button>
         <span class="dim" id="micstate" style="flex:1">還沒檢查</span>
+      </div>
+      <!-- 電腦上有好幾支麥克風（錄音介面、虛擬裝置）的人，在這裡選要用哪支。
+           只有一支、或還沒給權限（看不到名字）的時候整排會藏起來。 -->
+      <div class="microw" id="microw0" style="display:none">
+        <span class="tiny dim">用哪支麥克風</span>
+        <select id="micSel0" onchange="micPicked(this.value)"></select>
       </div>
       <div id="micfix" style="display:none">
         <p class="warn" id="micwhy"></p>
@@ -1030,6 +1044,13 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <div class="eyebrow t"><i></i>房號 <b id="roomcode" style="letter-spacing:.2em">----</b>
       　<span id="roomcount">1</span> 人</div>
     <p class="tiny" id="voiceline" style="display:none"></p>
+    <!-- 房間裡也能換麥克風（跟首頁那個是同一份設定） -->
+    <div class="microw" id="microw1" style="display:none">
+      <span class="tiny dim">用哪支麥克風</span>
+      <select id="micSel1" onchange="micPicked(this.value)"></select>
+    </div>
+    <!-- 每個朋友一條音量（只影響你自己聽到的） -->
+    <div id="voicevols" style="display:none"></div>
   </div>
 
   <div class="shell">
@@ -1932,14 +1953,15 @@ async function initAudio(){
       "<b>點網址列最左邊的圖示 → 麥克風 → 允許 → 重新整理。</b>");
   }catch(e){}
   try{
-    const st=await navigator.mediaDevices.getUserMedia({audio:{
-      echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const st=await navigator.mediaDevices.getUserMedia({audio:micWants({
+      echoCancellation:false,noiseSuppression:false,autoGainControl:false})});
     const src=AC.createMediaStreamSource(st);
     analyser=AC.createAnalyser(); analyser.fftSize=2048;
     buf=new Float32Array(analyser.fftSize); src.connect(analyser);
     micOK=true; micStream=st;
     $("micstate").innerHTML='麥克風 <b class="gold">正常</b>';
     $("micfix").style.display="none";
+    refreshMicSels();   // 拿到權限之後才看得到裝置名字，選單這時候才長得出來
     return true;
   }catch(e){
     const n=e&&e.name||"";
@@ -4152,6 +4174,68 @@ let voiceRoom=null, voiceStream=null, voicePeers={}, voiceState="off", voiceWhy=
      找到但沒聲 → 是網路穿不過去（要中繼伺服器 TURN）
    2026-08-15 那次三個人只聽得到一個，就是因為分不出是哪一種，只能猜。 */
 let voiceSeen={};
+/* 個別音量＋語音成員的名字（語音的成員編號跟遊戲玩家是兩套，要互報才知道誰是誰） */
+let voiceNames={}, voiceVol={}, voiceGains={}, voiceSay=null, voiceVolsSig="", voiceSayTimer=null;
+
+/* ================= 選麥克風（2026-08-16 Alvis 要的） =================
+   錄音介面一堆輸入的人（Alvis 本人：RME 的 SPDIF/ADAT 被 Windows 當預設，
+   整條是空的），Chrome 抓預設就是無聲。讓他在網頁裡自己選。
+   ⚠ 用 ideal 不用 exact：記住的那支被拔走時退回預設，不要整個開不起來。
+   ⚠ 兩條流（唱歌偵測＋語音）都要吃同一個選擇。 */
+let MIC_PICK=localStorage.getItem("micPick")||"";
+function micWants(extra){
+  const c=Object.assign({},extra||{});
+  if(MIC_PICK) c.deviceId={ideal:MIC_PICK};
+  return c;
+}
+async function refreshMicSels(){
+  let devs=[];
+  try{ devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audioinput"); }catch(e){}
+  /* 沒給過權限時名字是空的，選了也不知道在選什麼——那就先不出現 */
+  const named=devs.filter(d=>d.label);
+  for(const [selId,rowId] of [["micSel0","microw0"],["micSel1","microw1"]]){
+    const sel=$(selId), row=$(rowId); if(!sel||!row) continue;
+    if(named.length<2){ row.style.display="none"; continue; }
+    row.style.display="";
+    sel.innerHTML=named.map(d=>'<option value="'+esc(d.deviceId)+'"'+
+      (d.deviceId===MIC_PICK?" selected":"")+'>'+esc(d.label)+'</option>').join("");
+  }
+}
+function micPicked(v){
+  MIC_PICK=v; try{ localStorage.setItem("micPick",v); }catch(e){}
+  /* 兩條流都要跟著換：唱歌偵測那條重抓；語音那條整個重連 */
+  if(micOK) checkMic();
+  if(voiceRoom&&roomCode){ voiceLeave(); voiceJoin(roomCode); }
+}
+try{ navigator.mediaDevices.addEventListener("devicechange",refreshMicSels); }catch(e){}
+
+/* ================= 朋友個別音量（2026-08-16 Alvis 要的） =================
+   調的是「你自己聽到的」那份，不影響別人。
+   ⚠ 不能調 audio 元素的音量——Chrome 部分平台沒效、iOS 直接被禁。
+     正解：聲音改走 GainNode，還能放大到 200%。 */
+function voiceVolSet(id,v){
+  voiceVol[id]=v/100;
+  if(voiceGains[id]) try{ voiceGains[id].g.gain.value=v/100; }catch(e){}
+  const b=$("vv_"+id); if(b) b.textContent=v+"%";
+}
+function renderVoiceVols(){
+  const box=$("voicevols"); if(!box) return;
+  const ids=Object.keys(voicePeers);
+  if(voiceState!=="on"||!ids.length){ box.style.display="none"; voiceVolsSig=""; return; }
+  box.style.display="";
+  /* 只有成員或名字變了才重畫——不然畫面一更新，拉到一半的拉霸會被打斷 */
+  const sig=ids.slice().sort().join(",")+"|"+ids.map(i=>voiceNames[i]||"").join(",");
+  if(sig===voiceVolsSig) return;
+  voiceVolsSig=sig;
+  box.innerHTML='<p class="tiny dim" style="margin:6px 0 2px">誰太大聲、太小聲，自己拉（只影響你聽到的）</p>'+
+    ids.map(id=>{
+      const v=Math.round((voiceVol[id]!=null?voiceVol[id]:1)*100);
+      return '<div class="vvrow"><span class="vvname">'+esc(voiceNames[id]||"…")+'</span>'+
+        '<input type="range" min="0" max="200" step="5" value="'+v+'" '+
+        'oninput="voiceVolSet(\''+esc(id)+'\',this.value)">'+
+        '<b class="tiny" id="vv_'+esc(id)+'">'+v+'%</b></div>';
+    }).join("");
+}
 
 async function voiceJoin(code){
   if(voiceRoom||voiceState==="trying") return;
@@ -4162,7 +4246,7 @@ async function voiceJoin(code){
        跟音高偵測那條剛好相反（那條全部要關，開了持續的哼聲會被當成回音砍掉）。
        所以是兩條各自獨立的流，不能共用。 */
     voiceStream=await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+      audio:micWants({echoCancellation:true,noiseSuppression:true,autoGainControl:true})
     });
     const cfg={appId:"humming-game-voice"};
     cfg.rtcConfig={iceServers:VOICE_STUN.concat(VOICE_TURN||[])};
@@ -4174,12 +4258,32 @@ async function voiceJoin(code){
     cfg.relayConfig={redundancy:5};
     voiceRoom=joinRoom(cfg,"talk-"+code);
     voiceRoom.addStream(voiceStream);
+    /* 互報名字：語音的成員編號跟遊戲玩家是兩套，
+       不對名字的話，個別音量的拉霸不知道哪條是誰。
+       ⚠ 這個套件的 makeAction 回傳 {send,onMessage}，不是原版的 [送,收] 陣列；
+         而且 onMessage 跟 onPeerJoin 一樣是「賦值」的，不是拿來呼叫的。 */
+    try{
+      const who=voiceRoom.makeAction("who");
+      voiceSay=who.send;
+      /* ⚠ 這個套件收訊的第二個參數是 {peerId:"…"} 物件，不是編號本身。
+         直接當鑰匙用會全部疊在 "[object Object]" 那一格。 */
+      who.onMessage=(d,m)=>{
+        const id=(typeof m==="string")?m:(m&&m.peerId);
+        if(id&&d&&d.n){ voiceNames[id]=String(d.n).slice(0,12); renderVoice(); }
+      };
+      voiceSay({n:myName});
+      /* ⚠ 每 5 秒重報一次。語音的連線偶爾會自己斷掉重接，成員編號換一個新的，
+         只報一次的話，重接之後拉霸上的名字就掉了。幾個位元組而已。 */
+      clearInterval(voiceSayTimer);
+      voiceSayTimer=setInterval(()=>{ try{ voiceSay&&voiceSay({n:myName}); }catch(e){} },5000);
+    }catch(e){}
     /* ⚠ 這三個是「賦值」用的屬性，不是方法——
        寫成 onPeerJoin(fn) 會直接爆 "is not a function"。
        而且 addStream 的第二個參數要包成物件 {target:id}，不能直接丟 id。 */
     voiceRoom.onPeerJoin=id=>{           // 晚進來的人也要收得到我的聲音
       voiceSeen[id]=1;                   // 記下「找到過這個人」，診斷用
       try{ voiceRoom.addStream(voiceStream,{target:id}); }catch(e){}
+      try{ voiceSay&&voiceSay({n:myName}); }catch(e){}   // 廣播一次，剛進來的人也收得到
       renderVoice();
     };
     voiceRoom.onPeerStream=(s,id)=>{
@@ -4192,14 +4296,33 @@ async function voiceJoin(code){
       a.setAttribute("playsinline","");
       a.style.display="none";
       (document.getElementById("voicesink")||document.body).appendChild(a);
+      /* 出聲改走 GainNode（個別音量靠它；iOS 不給調 audio 元素音量）。
+         ⚠ audio 元素要留著但轉成靜音——Chrome 的老毛病：
+           沒有元素掛著，遠端串流不會動。走不了 WebAudio 就退回元素出聲。 */
+      try{
+        ensureAC();
+        const src=AC.createMediaStreamSource(s);
+        const g=AC.createGain();
+        g.gain.value=(voiceVol[id]!=null)?voiceVol[id]:1;
+        src.connect(g); g.connect(AC.destination);
+        if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){} }
+        voiceGains[id]={src,g};
+        a.muted=true;
+      }catch(e){}
       a.play().catch(()=>{});      // 還沒碰過畫面的話會被擋，碰一下就會通
       voicePeers[id]=a; renderVoice();
     };
     voiceRoom.onPeerLeave=id=>{
       if(voicePeers[id]){ try{ voicePeers[id].remove(); }catch(e){} delete voicePeers[id]; }
+      if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){} delete voiceGains[id]; }
+      delete voiceNames[id];
       renderVoice();
     };
-    voiceState="on"; renderVoice();
+    voiceState="on"; renderVoice(); refreshMicSels();
+    /* ⚠ 大廳音量表要等 voiceStream 就緒才開得起來，而開它的是 renderRoom。
+       一個人在房間的話，語音接好之後沒有任何房間變動、renderRoom 不會再跑，
+       音量表就永遠沒開始。這裡自己踢一下。（2026-08-16 Alvis 一個人測到的） */
+    if(room) renderRoom();
   }catch(e){
     voiceState="fail"; voiceWhy=(e&&e.message)||String(e);
     renderVoice();
@@ -4259,10 +4382,14 @@ function voiceLeave(){
   try{ if(voiceRoom) voiceRoom.leave(); }catch(e){}
   try{ if(voiceStream) voiceStream.getTracks().forEach(t=>t.stop()); }catch(e){}
   for(const k in voicePeers){ try{ voicePeers[k].remove(); }catch(e){} delete voicePeers[k]; }
+  for(const k in voiceGains){ try{ voiceGains[k].g.disconnect(); }catch(e){} delete voiceGains[k]; }
   voiceRoom=null; voiceStream=null; voiceState="off"; voiceWhy=""; voiceSeen={};
+  voiceNames={}; voiceSay=null; voiceVolsSig="";
+  clearInterval(voiceSayTimer); voiceSayTimer=null;
 }
 function renderVoice(){
   const el=$("voiceline"); if(!el) return;
+  renderVoiceVols();
   if(!isDiscord()){ el.style.display="none"; return; }
   el.style.display="";
   const n=Object.keys(voicePeers).length;
@@ -4561,6 +4688,7 @@ function enterRoom(){
   $("roomcode").textContent=roomCode;
   roomOn("",d=>{ room=d||{}; renderRoom(); });
   show("s-room");
+  refreshMicSels();
 }
 async function leaveRoom(){
   /* ⚠ 語音要等「取消監聽」之後才能收。
@@ -6084,7 +6212,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0816a";
+const BUILD="0816b";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
