@@ -552,6 +552,9 @@ input[readonly]{font-size:13px;color:var(--dim)}
   .kv span{min-width:0}
   .scoreline .s{flex-basis:100%;text-align:left}
 }
+/* 謎底幾個字的空格子（2026-08-16 Alvis 要求要一眼看到） */
+.wblanks i{display:inline-block;width:26px;height:30px;border:2px dashed var(--gold);
+  border-radius:7px;margin-right:5px;vertical-align:middle;opacity:.85}
 </style>
 </head>
 <body>
@@ -1177,6 +1180,12 @@ input[readonly]{font-size:13px;color:var(--dim)}
     </div>
     <div class="faceslot" id="fsReveal"></div>
     <div class="mixslot" id="msReveal"></div>
+    <!-- 歌詞不達意：重聽樂器版。大家手上本來就有整條旋律（畫捲軸用的那份），
+         重播不用抓任何東西。原音照設計不上傳（見 renderReveal 那段的理由）。 -->
+    <div class="row" id="revreplay" style="display:none">
+      <button class="btn" onclick="stopAll();playFrom(0)">▶ 再聽一次他唱的（樂器版）</button>
+      <button class="btn sm" onclick="stopAll()">■ 停</button>
+    </div>
     <div class="row" id="revdl" style="display:none">
       <button class="btn sm" onclick="downloadMix()">下載這次的音檔（樂器＋原音）</button>
       <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
@@ -3986,6 +3995,9 @@ function LocalNet(){
       list[k]=val; pathSet(d,path,list); write(d); ch&&ch.postMessage(1); fire();
       return Promise.resolve(k); },
     now(){ return Date.now(); },
+    /* 本機假網路沒有「斷線」這回事，這兩個放著讓呼叫的地方不用分是誰 */
+    vanish(){ return Promise.resolve(); },
+    onReconnect(){},
     leave(){ watchers=[]; if(ch) try{ ch.close(); }catch(e){} ch=null; }
   };
 }
@@ -4056,6 +4068,22 @@ function FireNet(){
     set(path,val){ return db.rt.set(R(path),val); },
     async push(path,val){ const r=await db.rt.push(R(path),val); return r.key; },
     now(){ return Date.now()+offset; },
+    /* 分頁被關掉／斷線：資料庫自己把這格清掉。
+       ⚠ 沒有這條的話，關分頁的人會永遠留在名單裡——
+       每輪大家都在等他，輪到他出題整場卡死。2026-08-16 五人實測抓到的。 */
+    async vanish(path){ try{ await db.rt.onDisconnect(R(path)).remove(); }catch(e){} },
+    /* 網路斷一下又回來：上面那條已經把人清掉了，要把自己寫回去、再掛一次保險 */
+    onReconnect(cb){
+      try{
+        const off=db.rt.onValue(db.rt.ref(db.ref,".info/connected"),s=>{
+          if(s.val()===true){
+            if(this._seenConn) { try{ cb(); }catch(e){} }
+            this._seenConn=true;
+          }
+        });
+        refs.push(off);
+      }catch(e){}
+    },
     leave(){ for(const o of refs){ try{ o(); }catch(e){} } refs=[]; }
   };
 }
@@ -4407,6 +4435,9 @@ async function packetGet(id){
 
 const GUESS_SECS=60;
 let room=null, myName="", isHost=false, unwatch=[], roundTimer=null;
+/* 自己座位的最後模樣（名字、分數、角色）。斷線回來要靠這份把自己寫回去——
+   那個瞬間名單裡已經沒有自己，從 room 抓會抓到空的、分數變 0。 */
+let mySeat=null;
 let lastGuessKeys={};
 /* 這一輪從雲端抓下來的原音（不是自己唱的那份） */
 let roomClip=null, roomClipFor=null;
@@ -4418,7 +4449,11 @@ function clearRoundTimer(){ if(roundTimer){ clearInterval(roundTimer); roundTime
 function askName(){
   let n=(localStorage.getItem("myName")||"").trim();
   if(!n){
-    n=(prompt("你叫什麼名字？（房間裡大家會看到）")||"").trim();
+    /* ⚠ prompt 在某些 App 內建瀏覽器不是回空字串、是直接丟錯誤。
+       不接住的話「開一間房」整顆按下去沒反應。2026-08-16 測到。 */
+    let p="";
+    try{ p=prompt("你叫什麼名字？（房間裡大家會看到）")||""; }catch(e){}
+    n=p.trim();
     if(n) localStorage.setItem("myName",n);
   }
   /* ⚠ LINE／FB／IG 的內建瀏覽器常常不跳 prompt，直接回空字串。
@@ -4476,6 +4511,22 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 /* ---- 開房 / 加入 ---- */
+/* 進房後掛兩條保險（開房和加入都要）：
+   ① 分頁被關掉／斷線 → 資料庫自動把自己從名單清掉（不然變幽靈，整場卡死）
+   ② 網路斷一下又回來 → ①已經把人清了，把自己寫回去、再掛一次① */
+function setupPresence(){
+  if(!Net||!myId) return;
+  Net.vanish&&Net.vanish("players/"+myId);
+  Net.onReconnect&&Net.onReconnect(()=>{
+    if(!Net||!myId) return;
+    /* 用平常記下來的那份（mySeat），不能看 room——這個瞬間名單裡已經沒有自己 */
+    const me=mySeat||{};
+    const seat={name:myName,score:me.score||0,at:me.at||Net.now()};
+    if(me.ch) seat.ch=me.ch;
+    Net.set("players/"+myId,seat);
+    Net.vanish("players/"+myId);
+  });
+}
 async function createRoom(initMode){
   myName=askName(); myId=newId(); isHost=true;
   Net=makeNet();
@@ -4487,6 +4538,7 @@ async function createRoom(initMode){
     /* 首頁按哪一顆進來的，就先選好那個玩法。房主進去之後還是可以改。 */
     await Net.set("mode",initMode||"buzz");
     await Net.set("players/"+myId,{name:myName,score:0,at:Net.now()});
+    setupPresence();
     enterRoom();
   }catch(e){ alert("開房間失敗："+(e.message||e)); }
 }
@@ -4498,6 +4550,7 @@ async function joinRoom(code){
   try{
     roomCode=await Net.join(c);
     await Net.set("players/"+myId,{name:myName,score:0,at:Net.now()});
+    setupPresence();
     enterRoom();
   }catch(e){ alert(e.message||"進不去這個房間，確認一下房號。"); }
 }
@@ -4517,7 +4570,7 @@ async function leaveRoom(){
   try{ if(Net&&myId) await Net.set("players/"+myId,null); }catch(e){}
   roomOff(); if(Net) Net.leave();
   voiceLeave(); letSleep();
-  Net=null; room=null; roomCode=null; isHost=false;
+  Net=null; room=null; roomCode=null; isHost=false; mySeat=null;
   roomPlay="buzz"; relayTask=null; chainRun=null;
   for(const k in hopCurveCache) delete hopCurveCache[k];
   show("s-start");
@@ -4563,6 +4616,7 @@ function handleLeavers(list){
 
 function renderRoom(){
   if(!room) return;
+  if(room.players&&room.players[myId]) mySeat=room.players[myId];
   isHost=room.host===myId;
   const st=room.state||"lobby";
   const list=playerList();
@@ -4830,15 +4884,21 @@ async function setupLive(){
   if(st==="guess"&&lvCurve.length){ curve=lvCurve; }
 
   const cn=CNUM[pz.len]||pz.len;
+  /* 字數要一眼看到——畫空格子比一行小字有用（2026-08-16 Alvis 要求）。
+     格子數＝謎底字數，放在題目行最前面。 */
+  const blanks=pz.len?'<span class="wblanks">'+'<i></i>'.repeat(pz.len)+'</span>　':'';
   $("liveask").innerHTML=dc
-    ? '他藏的是哪<b class="gold">'+cn+'個字</b>？<br>'+
+    ? blanks+'他藏的是<b class="gold">'+cn+'個字</b>。<br>'+
       '<b>不是猜歌名</b>——是他藏在歌裡的那幾個字，可能來自歌名，也可能是歌詞裡的。'
-    : "謎底是哪"+cn+"個字？";
+    : blanks+"謎底是哪"+cn+"個字？";
   const inp=$("liveword");
   /* ⚠ 原本的長度是跟著謎底字數走的。關鍵字只有兩個字的話，
      輸入框會被限制成 4 個字——連英文答案都打不進去。 */
   const maxl=dc?12:Math.max(4,pz.len+2);
   if(inp.maxLength!==maxl) inp.maxLength=maxl;
+  /* 打字框裡也講一次幾個字，看畫面哪裡都躲不掉 */
+  const ph="打你猜的字（"+cn+"個字），Enter 送出";
+  if(inp.placeholder!==ph) inp.placeholder=ph;
 
   /* 他賭了誰，全場都看得到——被賭到的人自己也要知道 */
   if(dc&&room.pick){
@@ -5045,11 +5105,13 @@ async function renderReveal(){
     const won=first&&first.by===room.pick;
     const guessed=hits.some(x=>x.by===room.pick);
     $("revbet").style.display="";
+    /* ⚠ 不要寫「賭」——2026-08-15 之後是系統指定的，不是出題的人選的。
+       上面兩處 0815e 改掉了，這裡漏掉，2026-08-16 補。 */
     $("revbet").innerHTML=won
-      ? '賭 <b class="gold">'+esc(bp.name||"？")+'</b>——<b class="ok" style="color:var(--green)">賭中了</b>，兩個人都加分。'
+      ? '這輪唱給 <b class="gold">'+esc(bp.name||"？")+'</b> 聽——<b class="ok" style="color:var(--green)">他第一個猜到</b>，兩個人都加分。'
       : (guessed
-        ? '賭 <b class="gold">'+esc(bp.name||"？")+'</b>——<b style="color:var(--dim)">被別人搶先了</b>，這輪白唱。'
-        : '賭 <b class="gold">'+esc(bp.name||"？")+'</b>——<b style="color:var(--rose)">他沒猜到</b>，賭錯人了，扣 2 分。');
+        ? '這輪唱給 <b class="gold">'+esc(bp.name||"？")+'</b> 聽——<b style="color:var(--dim)">被別人搶先了</b>，這輪白唱。'
+        : '這輪唱給 <b class="gold">'+esc(bp.name||"？")+'</b> 聽——<b style="color:var(--rose)">他到最後都沒猜到</b>，扣 2 分。');
   }else $("revbet").style.display="none";
 
   $("revword").textContent=pz.target||"";
@@ -5091,8 +5153,14 @@ async function renderReveal(){
      刪掉之後任何畫面再叫 mountMix 就當掉（box 是 null）。
      真人踩法：先玩搶答，再換歌詞不達意，揭曉就掛。2026-08-15 修。
      正確做法是叫它收起來，不是刪掉。 */
-  if(isDiscord()) mountMix(null);
-  else revealMix();
+  if(isDiscord()){
+    mountMix(null);
+    /* 揭曉可以重聽樂器版（2026-08-16 加）：聽的人手上本來就有整條旋律，
+       出題的人自己那份在 cur 裡，補過去就一樣能重播。 */
+    if((!curve||!curve.length)&&pz.by===myId&&typeof cur!=="undefined"&&cur&&cur.length) curve=cur;
+    $("revreplay").style.display=(curve&&curve.length)?"":"none";
+  }
+  else{ $("revreplay").style.display="none"; revealMix(); }
 }
 /* 揭曉之後大家都能聽唱的人的原音。
    出題的人本來就有（自己剛錄的）；其他人要去雲端抓。 */
@@ -6016,7 +6084,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0815e";
+const BUILD="0816a";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
