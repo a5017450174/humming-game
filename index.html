@@ -1013,6 +1013,11 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
   <button class="ptt" id="tkBtn">按住說話<span>連點兩下鎖定，再點一下解開</span></button>
   <div class="tkmeter"><i id="tkMeter"></i></div>
+  <!-- 用喇叭的人一定會回授（自己的樂器聲被自己麥克風收回去，變成停不掉的長音）。
+       這顆讓他直接關掉「自己聽自己」，設定會記住。 -->
+  <div class="row" style="justify-content:center;margin-top:6px">
+    <button class="btn sm" id="monBtn" onclick="monToggle()">我在用喇叭：關掉自己的樂器聲</button>
+  </div>
 
   <p class="warn" id="talkhid" style="display:none">
     <b>剛剛切走了，那一段沒送出去。</b>要發出聲音的時候，這個視窗必須看得到——
@@ -4306,15 +4311,29 @@ async function voiceJoin(code){
       /* 出聲改走 GainNode（個別音量靠它；iOS 不給調 audio 元素音量）。
          ⚠ audio 元素要留著但轉成靜音——Chrome 的老毛病：
            沒有元素掛著，遠端串流不會動。走不了 WebAudio 就退回元素出聲。 */
+      /* 個別音量：聲音先繞過 GainNode，但**最後還是從 <audio> 元素出聲**。
+         ⚠ 2026-08-16 踩到的大坑：0816b 那版直接 g.connect(AC.destination)，
+           等於繞過瀏覽器的回音消除——用喇叭的人會把對方的聲音收回去再送出去，
+           對方就聽到自己講話的長回音。回音消除只認「元素播出來的聲音」。
+         做法：來源 → 音量 → 一條新的串流 → 丟回 <audio> 播。
+         ⚠ 另外要留一個「靜音的元素掛著原始串流」——Chrome 的老毛病：
+           沒有元素牽著，遠端串流不會流動，接到 WebAudio 也是一片死寂。 */
       try{
         ensureAC();
+        const keep=document.createElement("audio");
+        keep.srcObject=s; keep.autoplay=true; keep.playsInline=true;
+        keep.setAttribute("playsinline",""); keep.muted=true; keep.style.display="none";
+        (document.getElementById("voicesink")||document.body).appendChild(keep);
+        keep.play().catch(()=>{});
         const src=AC.createMediaStreamSource(s);
         const g=AC.createGain();
         g.gain.value=(voiceVol[id]!=null)?voiceVol[id]:1;
-        src.connect(g); g.connect(AC.destination);
-        if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){} }
-        voiceGains[id]={src,g};
-        a.muted=true;
+        const out=AC.createMediaStreamDestination();
+        src.connect(g); g.connect(out);
+        if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){}
+          try{ voiceGains[id].keep.remove(); }catch(e){} }
+        voiceGains[id]={src,g,keep};
+        a.srcObject=out.stream; a.muted=false;
         /* AC 還在睡（他從進頁面到現在都沒點過東西）＝聽不到人聲。
            畫面上要講出來，而且醒了要自己把提示收掉。 */
         AC.onstatechange=()=>renderVoice();
@@ -4325,7 +4344,8 @@ async function voiceJoin(code){
     };
     voiceRoom.onPeerLeave=id=>{
       if(voicePeers[id]){ try{ voicePeers[id].remove(); }catch(e){} delete voicePeers[id]; }
-      if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){} delete voiceGains[id]; }
+      if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){}
+        try{ voiceGains[id].keep.remove(); }catch(e){} delete voiceGains[id]; }
       delete voiceNames[id];
       renderVoice();
     };
@@ -4393,7 +4413,8 @@ function voiceLeave(){
   try{ if(voiceRoom) voiceRoom.leave(); }catch(e){}
   try{ if(voiceStream) voiceStream.getTracks().forEach(t=>t.stop()); }catch(e){}
   for(const k in voicePeers){ try{ voicePeers[k].remove(); }catch(e){} delete voicePeers[k]; }
-  for(const k in voiceGains){ try{ voiceGains[k].g.disconnect(); }catch(e){} delete voiceGains[k]; }
+  for(const k in voiceGains){ try{ voiceGains[k].g.disconnect(); }catch(e){}
+    try{ voiceGains[k].keep.remove(); }catch(e){} delete voiceGains[k]; }
   voiceRoom=null; voiceStream=null; voiceState="off"; voiceWhy=""; voiceSeen={};
   voiceNames={}; voiceSay=null; voiceVolsSig="";
   clearInterval(voiceSayTimer); voiceSayTimer=null;
@@ -5165,7 +5186,11 @@ async function sendGuess(){
   const ok=dc?sameWord(t,pz.target):(t===pz.target);
   const already=Object.values((room.guesses)||{}).filter(x=>x.ok).length;
   await Net.push("guesses",{by:myId,name:myName,text:t,ok:ok,at:Net.now(),rank:ok?already+1:0});
-  if(!ok){ celebrate(false); return; }
+  /* ⚠ 歌詞不達意猜錯不要跳全螢幕安慰＋彩帶。
+     這個玩法一輪會亂猜、聊天好幾次，每打一句就蓋一次畫面很煩，
+     而且「猜錯」在這裡根本不是一件事，是聊天的一部分。（2026-08-16 Alvis 講的）
+     一次猜完的連結版還是要留著——那邊猜錯是真的結束了。 */
+  if(!ok){ if(!dc) celebrate(false); return; }
   celebrate(true);
 
   if(dc){
@@ -5437,6 +5462,9 @@ function unpackChunk(u8,fromIdx){
    而且這裡不需要：他自己的骨傳導聲音本來就在，
    網頁這份對他來說是另一件樂器，不是自己聲音的鏡子。 */
 let MON=null, monVol=1;
+/* 用喇叭的人把「自己聽自己」關掉，記在這台電腦上 */
+let monOff=(localStorage.getItem("monOff")==="1");
+if(monOff) monVol=0;
 function monBegin(){
   if(MON||!isDiscord()) return;
   ensureAC();
@@ -5480,7 +5508,10 @@ function monEnd(){
    耳機才是真正的解法，這裡只負責在它發生的時候講出來。
    怎麼認出來：人聲永遠有細微的抖動，回授是純振盪器，
    音高會連續好幾秒穩到不像話。五音分以內連續一秒半，人做不到。 */
-const FB_JITTER=0.05, FB_FRAMES=90;
+/* ⚠ 本來要連續 90 格（約 1.5 秒）才判定回授——太慢了，那 1.5 秒已經很吵。
+   2026-08-16 Alvis 實測「回音超長」之後改成 30 格（約半秒）。
+   誤判的代價很小（只是自己聽不到樂器聲，按一下就開回來）。 */
+const FB_JITTER=0.05, FB_FRAMES=30;
 function monWatchFeedback(m,v){
   if(m===null||v<0.05){ MON.fbHits=0; MON.prevM=null; return; }
   const flat=(MON.prevM!==null)&&Math.abs(m-MON.prevM)<FB_JITTER;
@@ -5492,9 +5523,25 @@ function monWatchFeedback(m,v){
   }
 }
 function monUnmute(){
-  monVol=1;
+  monVol=1; monOff=false;
+  try{ localStorage.setItem("monOff","0"); }catch(e){}
   const w=$("talkfb"); if(w) w.style.display="none";
   if(MON){ MON.fbHits=0; MON.prevM=null; }
+  renderMonBtn();
+}
+/* 用喇叭的人自己關掉「聽自己的樂器聲」。記住選擇，下次不用再關一次。 */
+function monToggle(){
+  monOff=!monOff;
+  try{ localStorage.setItem("monOff",monOff?"1":"0"); }catch(e){}
+  monVol=monOff?0:1;
+  if(MON){ MON.fbHits=0; MON.prevM=null;
+    try{ MON.gain.gain.setTargetAtTime(0,AC.currentTime,0.02); }catch(e){} }
+  const w=$("talkfb"); if(w&&monOff) w.style.display="none";
+  renderMonBtn();
+}
+function renderMonBtn(){
+  const b=$("monBtn"); if(!b) return;
+  b.textContent=monOff?"樂器聲已關掉（戴耳機的話可以開回來）":"我在用喇叭：關掉自己的樂器聲";
 }
 
 /* ================= 歌詞不達意：賭一個人 ================= */
@@ -5558,6 +5605,7 @@ function talkShow(){
   $("tkMeter").style.width="0%";
   $("talkfb").style.display="none";
   setPtt(false);
+  renderMonBtn();
   show("s-talk");
   wireTalkBtn();
   drawRoll("cvTalk",[{t:0,m:null,v:0}],{span:1});
@@ -6229,7 +6277,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0816c";
+const BUILD="0816d";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
