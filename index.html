@@ -74,6 +74,56 @@ h2{font-size:clamp(23px,5vw,31px);line-height:1.2;margin:0;font-weight:700;
 p{margin:0;line-height:1.85;color:#cfc6b7;font-size:15.5px}
 .dim{color:var(--dim);font-size:14.5px;line-height:1.8}
 .tiny{color:var(--faint);font-size:13px;line-height:1.75}
+/* 🔴 計分板：王冠、加了幾分、名次上下。2026-08-17 Alvis 要的。
+   他的原話：「誰超前了 誰往後了 這要有一個很明顯的動態 大家都看的到」。
+   ⚠ 三種提示各司其職，不要混在一起：
+     王冠＝現在誰第一（狀態）　+N＝這一輪加了幾分（事件）　↑↓＝名次動了幾位（變化）
+   ⚠ 加分和名次的動畫都只演一次就停。一直閃會變成背景雜訊，反而沒人看。 */
+.crown{width:17px;height:17px;flex:none;margin-right:5px;vertical-align:-3px}
+.crown path{fill:var(--gold)}
+.qcard.no1{border-color:rgba(255,222,150,.45);
+  background:linear-gradient(168deg,rgba(245,185,66,.13),rgba(245,185,66,.04))}
+.gain{
+  display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;
+  font-size:13px;font-weight:700;letter-spacing:.02em;
+  background:rgba(147,207,114,.16);color:var(--green);border:1px solid rgba(147,207,114,.32);
+  animation:gainPop .55s var(--pop) both, gainFade .5s ease 3.4s both;
+}
+.gain.minus{background:rgba(232,122,84,.16);color:var(--rose);border-color:rgba(232,122,84,.34)}
+@keyframes gainPop{0%{transform:translateY(9px) scale(.6);opacity:0}100%{transform:none;opacity:1}}
+@keyframes gainFade{to{opacity:0;transform:translateY(-6px)}}
+.rankmv{
+  display:inline-block;margin-left:6px;font-size:12.5px;font-weight:700;
+  animation:gainPop .55s var(--pop) .12s both, gainFade .5s ease 3.5s both;
+}
+.rankmv.up{color:var(--green)} .rankmv.down{color:var(--rose)}
+/* 已經演過一次的，後面每次重畫就靜靜待著，不要再彈一次 */
+.gain.still,.rankmv.still{animation:none}
+/* 名次動了的那一列整條亮一下，眼睛才會被拉過去 */
+.qcard.moved{animation:rowFlash 1.5s ease 1}
+@keyframes rowFlash{0%,100%{box-shadow:none}
+  22%{box-shadow:0 0 0 2px rgba(245,185,66,.5),0 8px 26px -12px rgba(245,185,66,.75)}}
+@media (prefers-reduced-motion:reduce){
+  .gain,.rankmv{animation:none} .qcard.moved{animation:none}
+}
+
+/* 🔴 全場結算：歌詞達意王 */
+.champ{
+  margin:6px 0 14px;padding:26px 20px;border-radius:22px;text-align:center;
+  background:linear-gradient(168deg,rgba(245,185,66,.2),rgba(245,185,66,.05));
+  border:1px solid rgba(255,222,150,.5);
+  box-shadow:0 18px 50px -26px rgba(245,185,66,.9);
+  animation:champIn .8s var(--pop) both;
+}
+.champ .ttl{font-size:14px;color:var(--dim);letter-spacing:.16em;margin-bottom:10px}
+.champ .who{font-size:30px;font-weight:800;color:var(--gold);line-height:1.25;
+  text-shadow:0 0 26px rgba(245,185,66,.5)}
+.champ .who .crown{width:30px;height:30px;vertical-align:-5px;margin-right:8px}
+.champ .sc{margin-top:8px;font-size:15px;color:var(--text)}
+.champ .cheer{margin-top:12px;font-size:17px;font-weight:700;color:var(--text)}
+@keyframes champIn{0%{transform:scale(.86) translateY(14px);opacity:0}100%{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.champ{animation:none}}
+
 /* 🔴 「這輪是唱給你聽的」——被指定的那個人一定要一眼看到。
    2026-08-17 Alvis 要的。本來只有一行小灰字在句尾寫「← 就是你」，
    混在說明字裡面根本不會被注意到，等於沒講。
@@ -1390,9 +1440,20 @@ body.sending #sendtag{display:flex}
       <button class="btn sm" onclick="downloadMix()">下載這次的音檔（樂器＋原音）</button>
       <button class="btn sm" onclick="downloadRaw()">只下載原音</button>
     </div>
+    <!-- 🔴 全場跑完的結算。2026-08-17 Alvis 要的：「誰誰誰 是歌詞達意王!! 恭喜!」 -->
+    <div class="champ" id="champ" style="display:none">
+      <div class="ttl">全 場 結 算</div>
+      <div class="who" id="champWho"></div>
+      <div class="sc" id="champSc"></div>
+      <div class="cheer" id="champCheer"></div>
+    </div>
     <p class="tiny" id="revleft" style="text-align:center;display:none"></p>
+    <!-- 🔴 下一輪的按鈕長在「下一個要唱的人」身上，不是房主。
+         卡住的時候才一層一層放給別人按（房主 → 剛剛唱完的人）。 -->
     <button class="btn go big wide" id="revnext" onclick="nextOrMore()">
       下一輪 <span class="cir">→</span></button>
+    <button class="btn sm wide" id="revskip" style="display:none;margin-top:8px"
+      onclick="passRound()">跳過他，換下一個人唱</button>
     <p class="dim" id="revwait" style="text-align:center;display:none">等房主開下一輪…</p>
   </div>
 
@@ -5146,6 +5207,19 @@ function handleLeavers(list){
   }
 }
 
+/* 上一次看到的分數和名次，用來算「這一輪誰加了幾分、誰爬了幾名」。
+   ⚠ 用畫面上「已經顯示過」的那份當基準，不是資料庫的舊值——
+     一輪之內 renderRoom 會跑好幾十次，比錯基準就會一直重播動畫。 */
+/* 這一輪開始時的分數和名次，用來算「這一輪誰加了幾分、誰爬了幾名」。
+   換一輪就重新拍一次快照，徽章也跟著清掉。 */
+let 輪起分數=null, 輪起名次=null, 輪起輪次=-1, 上次指紋="";
+/* 現在正在顯示的徽章。⚠ 一定要記住，renderRoom 一輪跑好幾十次，
+   不記的話徽章只會閃過一格畫面，等於沒做。 */
+let 顯示中={};
+/* 王冠。⚠ 用 SVG 不用 emoji——emoji 每台電腦長不一樣，
+   而且在 Windows 上是彩色的，跟這個遊戲的金色調性不搭。 */
+const CROWN='<svg class="crown" viewBox="0 0 24 24" aria-hidden="true">'+
+  '<path d="M3 8l4.2 3.1L12 4l4.8 7.1L21 8l-1.7 10.2a1 1 0 0 1-1 .8H5.7a1 1 0 0 1-1-.8L3 8z"/></svg>';
 function renderRoom(){
   if(!room) return;
   if(room.players&&room.players[myId]) mySeat=room.players[myId];
@@ -5183,8 +5257,47 @@ function renderRoom(){
   /* 等人的時候每個人旁邊放一條會跳的音量表——一眼就知道誰的麥克風真的有聲音。
      ⚠ 只在大廳出現。玩起來之後那條會一直跳，很吵，而且那時候要看的是分數。 */
   const showMic=(st==="lobby"&&isDiscord());
-  $("roomplayers").innerHTML=list.map(p=>
-    '<div class="qcard"><span class="w">'+esc(p.name||"?")+'</span>'+
+  /* 🔴 分數變化要看得到。2026-08-17 Alvis 要的：
+     「誰超前了 誰往後了 這要有一個很明顯的動態 大家都看的到」。
+     ⚠ 只有「真的變了」才畫，而且同一次變化只演一次——
+       renderRoom 每次房間資料更新都會跑（一輪好幾十次），
+       每次都重播動畫的話會一直閃，變成沒人看的背景雜訊。 */
+  const 有人得分 = list.some(p=>(p.score||0)>0);
+  /* ⚠ 比較的基準是「這一輪開始的時候」，不是「上一次重畫的時候」。
+     兩個原因：
+     ① 分數是分好幾次寫進資料庫的（猜到的人自己加、出題的人被別人加），
+        用「上一次重畫」當基準的話，第二次寫入會把第一次的 +5 蓋掉——實測真的掉了。
+     ② 玩家要看的本來就是「這一輪我加了幾分」，不是「剛剛那 0.2 秒發生什麼」。 */
+  if(輪起分數===null||輪起輪次!==(room.round||0)){
+    輪起輪次=(room.round||0);
+    輪起分數={}; 輪起名次={};
+    list.forEach((p,i)=>{ 輪起分數[p.id]=p.score||0; 輪起名次[p.id]=i+1; });
+    顯示中={};
+  }
+  const 變化 = {};
+  for(const [i,p] of list.entries()){
+    const 舊分=輪起分數[p.id], 舊名=輪起名次[p.id];
+    if(舊分===undefined) continue;
+    const 差=(p.score||0)-舊分;
+    const 移=(舊名!==undefined)?(舊名-(i+1)):0;   // 正數＝往前爬
+    if(差!==0||移!==0) 變化[p.id]={差,移};
+  }
+  const 這次指紋=JSON.stringify(變化);
+  if(這次指紋!==上次指紋){
+    /* ⚠ 徽章要撐住幾秒。renderRoom 一輪跑好幾十次，
+       只在偵測到變化那一次畫出來的話，下一次重畫就洗掉了，實測根本看不到。 */
+    for(const id in 變化){
+      const 舊=顯示中[id];
+      顯示中[id]={...變化[id], 演過:!!(舊&&舊.演過&&舊.差===變化[id].差&&舊.移===變化[id].移)};
+    }
+    for(const id in 顯示中) if(!變化[id]) delete 顯示中[id];
+    上次指紋=這次指紋;
+  }
+  $("roomplayers").innerHTML=list.map((p,i)=>{
+    const v=顯示中[p.id]||null;
+    const 第一=(!showMic&&i===0&&有人得分);
+    return '<div class="qcard'+(第一?" no1":"")+((v&&v.移!==0)?" moved":"")+'">'+
+    '<span class="w">'+(第一?CROWN:'')+esc(p.name||"?")+'</span>'+
     (p.id===performerId()?'<span class="n" style="color:var(--teal)">正在出題</span>':'')+
     (p.id===room.host?'<span class="n">房主</span>':'')+
     (showMic
@@ -5193,8 +5306,15 @@ function renderRoom(){
       : '')+
     /* ⚠ 不要寫「沒聲音」。分頁在背景的人音量表會停止更新，
        看起來就跟麥克風壞掉一模一樣——那是冤枉他。寫「還沒出聲」兩種情況都成立。 */
-    '<span class="sg">'+(showMic?((p.mic||0)>2?'有聲音':'還沒出聲'):((p.score||0)+' 分'))+
-    '</span></div>').join("");
+    '<span class="sg">'+(showMic?((p.mic||0)>2?'有聲音':'還沒出聲'):
+      ((p.score||0)+' 分'+
+       /* ⚠ 動畫只在「第一次畫出來」的時候跑。每次重畫都是全新的元素，
+          不擋的話那個彈出動畫會跟著每次房間更新重播，看起來像壞掉在抽搐。 */
+       ((v&&v.差!==0)?'<span class="gain'+(v.差<0?' minus':'')+(v.演過?' still':'')+'">'+(v.差>0?'+':'')+v.差+'</span>':'')+
+       ((v&&v.移!==0)?'<span class="rankmv '+(v.移>0?'up':'down')+(v.演過?' still':'')+'">'+(v.移>0?'▲':'▼')+Math.abs(v.移)+'</span>':'')))+
+    '</span></div>';
+  }).join("");
+  for(const id in 顯示中) 顯示中[id].演過=true;
   micWatch(showMic);
   $("roomcount").textContent=list.length;
 
@@ -5322,7 +5442,10 @@ function pickMode(m){ if(isHost&&Net) Net.set("mode",m); }
 /* 預設每個人出題兩次。跑完想再玩，房主按「再跑一圈」就多一圈。 */
 const LAPS_DEFAULT=2;
 async function nextOrMore(){
-  if(!isHost||!Net) return;
+  if(!Net) return;
+  /* ⚠ 這裡不再擋非房主——歌詞不達意是「下一個要唱的人自己按」。
+     真正的把關在 startRound 裡（它會確認你是不是有資格按、有沒有人搶先開過）。 */
+  if(!isDiscord()&&!isHost) return;
   if(isDiscord()){
     const n=playerList().length, laps=room.laps||LAPS_DEFAULT;
     if((room.round||0)>=n*laps) await Net.set("laps",laps+1);
@@ -5383,14 +5506,29 @@ async function assignPick(ids,performer,r){
   return pick;
 }
 
-async function startRound(){
-  if(!isHost) return;
-  const list=playerList();
+/* skip=true：跳過原本輪到的那個人，直接換下一個（round 多跳一號）。 */
+async function startRound(skip){
   const md=room.mode||"buzz";
+  /* 🔴 2026-08-17：歌詞不達意改成「下一個要唱的人自己按」，
+     所以不能再只認房主。誰按得動由 revNextUI 決定，這裡只擋明顯不合理的：
+     不在房間、不是下一個要唱的人也不是房主也不是剛唱完的人。
+     ⚠ 其他玩法沒改，照舊只有房主能開。 */
+  if(md!=="discord"){ if(!isHost) return; }
+  else{
+    const nx=nextPerformer();
+    const 可以=(nx&&nx.id===myId)||isHost||(room.performer===myId);
+    if(!可以) return;
+    /* ⚠ 兩個人同時按會開兩輪。用「我看到的輪次」當門票，
+       開之前先確認沒人搶先開過。 */
+    const 我看到的=(room.round||0);
+    if(startRound._開過===我看到的) return;
+    startRound._開過=我看到的;
+  }
+  const list=playerList();
   if(list.length<(md==="discord"?3:2)) return;
   if(md==="relay") return startRelayRound(list);
   roomPlay=(md==="discord")?"discord":"buzz";
-  const r=(room.round||0)+1;
+  const r=(room.round||0)+1+(skip?1:0);
   /* 輪流當出題的人：照加入順序輪 */
   const order=list.slice().sort((a,b)=>(a.at||0)-(b.at||0));
   const next=order[(r-1)%order.length];
@@ -5670,6 +5808,61 @@ function maybeEndRound(){
 
 /* ---- 揭曉 ---- */
 let revealScored=-1;      // 這一輪的押注結算過了沒（記輪次，免得重畫又扣一次）
+let champShown=-1;        // 結算的彩帶放過了沒（記輪次，免得一直重放）
+/* 這一輪的揭曉是幾點開始的。用來決定「卡多久之後才把按鈕放給別人」。
+   ⚠ 存在本機就好，不要寫進房間資料——
+     資料庫的規則是白名單，新欄位會被擋成 PERMISSION_DENIED（2026-08-15 踩過）。
+     每個人幾乎同時進揭曉，各自算各自的時間就夠準了。 */
+let revSince={round:-1,at:0};
+
+/* 誰是下一個要唱的人。
+   startRound 挑人是 order[(r-1)%n]（order 照進房順序），
+   所以下一輪 r+1 就是 order[r%n]。 */
+function nextPerformer(){
+  const order=playerList().slice().sort((a,b)=>(a.at||0)-(b.at||0));
+  if(!order.length) return null;
+  return order[(room.round||0)%order.length];
+}
+
+/* 🔴 下一輪的按鈕該給誰看。2026-08-17 Alvis 定的規則：
+     ① 平常長在「下一個要唱的人」身上——是他要唱，就該他按
+     ② 他太久沒動作 → 房主也看得到（可以幫他開始，或跳過他換下一個）
+     ③ 房主也一直沒動作 → 剛剛唱完的那個人也看得到，可以空過交棒
+   這是「卡不死」的機制：任何一個人不見了，都還有下一個人接得上。 */
+function revNextUI(){
+  const 下一個=nextPerformer();
+  const 我是下一個=!!(下一個&&下一個.id===myId);
+  const 我剛唱完=(room.performer===myId);
+  const 有人在=id=>!!((room.players||{})[id]);
+  /* 下一個要唱的人已經不在房裡＝不用等他，馬上把按鈕放出來 */
+  const 他不在=!(下一個&&有人在(下一個.id));
+
+  if(revSince.round!==(room.round||0)) revSince={round:(room.round||0),at:Date.now()};
+  const 等了=(Date.now()-revSince.at)/1000;
+
+  const 第二層=他不在||等了>=25;      // 房主可以出手
+  const 第三層=他不在||等了>=45;      // 剛剛唱完的人也可以出手
+  const 我按得動=我是下一個||(isHost&&第二層)||(我剛唱完&&第三層);
+  /* 跳過只在「不是他自己」的時候才有意義——他自己按「下一輪」就好 */
+  const 我跳得動=!我是下一個&&((isHost&&第二層)||(我剛唱完&&第三層));
+
+  $("revnext").style.display=我按得動?"":"none";
+  $("revskip").style.display=我跳得動?"":"none";
+  if(我按得動&&!我是下一個&&下一個)
+    $("revnext").firstChild.nodeValue="幫 "+(下一個.name||"他")+" 開始 ";
+  $("revwait").style.display=我按得動?"none":"";
+  $("revwait").textContent=下一個
+    ? ("等 "+(下一個.name||"他")+" 開始下一輪…"+(等了<25?"（太久沒動作的話房主可以直接開）":""))
+    : "等房主開下一輪…";
+  /* 還沒到時間就每秒重算一次，時間到了按鈕才會自己冒出來 */
+  if($("s-room").classList.contains("on")&&$("rmReveal").style.display!=="none"&&!第三層)
+    setTimeout(()=>{ if(room&&room.state==="reveal") revNextUI(); },1000);
+}
+
+/* 跳過這一輪：round 直接多跳一號，出題的人就換成下一個。
+   ⚠ 故意用現有的 round 欄位，不新增欄位——資料庫規則是白名單，
+     新欄位會被擋掉，而且要另外推規則才會生效。 */
+async function passRound(){ return startRound(true); }
 
 async function renderReveal(){
   const pz=room.puzzle||{};
@@ -5724,8 +5917,13 @@ async function renderReveal(){
     '<div class="scoreline"><span class="n">'+(i+1)+'</span>'+
     '<span class="a">'+esc(p.name)+'</span>'+
     '<span class="r">'+(p.score||0)+' 分</span></div>').join("");
-  $("revnext").style.display=isHost?"":"none";
-  $("revwait").style.display=isHost?"none":"";
+  /* 🔴 誰按得動「下一輪」——不再是只有房主。規則在 revNextUI 裡。 */
+  if(isDiscord()) revNextUI();
+  else{
+    $("revnext").style.display=isHost?"":"none";
+    $("revskip").style.display="none";
+    $("revwait").style.display=isHost?"none":"";
+  }
 
   /* ---- 還剩幾輪 ----
      查過 Gartic 是「先到 120 分」，但它跑十幾輪、房間可以到 50 人，
@@ -5733,14 +5931,34 @@ async function renderReveal(){
      ⚠ 可能有人出過兩次題、有人只出一次就結束了——而出題是這遊戲最好玩的位置。
      所以改成跑滿圈數。但 Gartic 有個好東西要偷：它讓你隨時知道還差多少。 */
   if(isDiscord()){
-    const n=playerList().length, laps=room.laps||LAPS_DEFAULT;
+    const list=playerList();
+    const n=list.length, laps=room.laps||LAPS_DEFAULT;
     const left=Math.max(0,n*laps-(room.round||0));
     $("revleft").style.display="";
     $("revleft").textContent=left>0
       ? "還剩 "+left+" 輪（每個人出題 "+laps+" 次）"
       : "每個人都出過題了，上面就是總分。";
     $("revnext").firstChild.nodeValue=left>0?"下一輪 ":"再跑一圈 ";
-  }else $("revleft").style.display="none";
+
+    /* 🔴 全場跑完＝結算，選出歌詞達意王。2026-08-17 Alvis 要的。 */
+    if(left<=0&&list.length&&(list[0].score||0)>0){
+      const 冠=list[0];
+      const 並列=list.filter(p=>(p.score||0)===(冠.score||0));
+      $("champ").style.display="";
+      $("champWho").innerHTML=CROWN+(並列.length>1
+        ? 並列.map(p=>esc(p.name||"?")).join(" ＆ ")
+        : esc(冠.name||"?"));
+      $("champSc").textContent=(並列.length>1?"並列第一，":"")+(冠.score||0)+" 分";
+      $("champCheer").textContent=並列.length>1
+        ? "你們是歌詞達意王！恭喜！" : "是歌詞達意王！恭喜！";
+      /* ⚠ 彩帶只在「第一次看到結算」放一次。renderReveal 每次房間更新都會跑，
+         不擋的話會一直重放，變成停不下來的彩帶雨。 */
+      if(champShown!==(room.round||0)){
+        champShown=(room.round||0);
+        try{ celebrate(true); }catch(e){}
+      }
+    }else $("champ").style.display="none";
+  }else{ $("revleft").style.display="none"; $("champ").style.display="none"; }
   mountFace("fsReveal"); faceIdle(true); faceRangeFrom(curve);
   /* ⚠ 歌詞不達意不錄原音（一輪好幾分鐘，遠超過 1.2MB 上限，
      而且那段原音是他一直在唸關鍵字，本來也不適合公開）。
@@ -6792,7 +7010,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817i";
+const BUILD="0817j";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
