@@ -2995,6 +2995,13 @@ function stopSynth(){
 }
 function stopAll(){
   chainRun=null;      // 「一路播下來」按停就要真的停，不能讓下一手接著冒出來
+  /* 🔴 「■ 停」要真的全部停。2026-08-17 之前 stopAll 管不到串流那條聲音（LV），
+     所以聲音卡住的時候，按停完全沒反應——實測按了音量還是 0.28。
+     ⚠ 只關 LV，不關 MON：MON 是出題的人自己唱歌時的監聽音，
+       他按停或換樂器的時候還按著按鈕在唱，關掉就要等他放開再按才會回來。
+       MON 改在「離開唱／猜階段」和「離開房間」時關（hushRound）。
+     LV 沒有這個問題：下一批資料進來 liveAudioAppend 會自己重開一組。 */
+  try{ liveAudioStop(); }catch(e){}
   stopSynth();
   if(mixSrc){ try{ mixSrc.s.stop(); }catch(e){} try{ mixSrc.g.disconnect(); }catch(e){} mixSrc=null; }
   if(window.__raw){ try{window.__raw.pause();}catch(e){} }
@@ -5053,6 +5060,10 @@ async function leaveRoom(){
      然後跟著你進下一個房間。收在最前面反而收不掉。 */
   try{ if(Net&&myId) await Net.set("players/"+myId,null); }catch(e){}
   roomOff(); if(Net) Net.leave();
+  /* 🔴 走人就要安靜。2026-08-17 之前這裡沒關聲音——實測離開房間之後
+     那個音不但還在，音量還從 0.13 變成 0.40（排好的斜坡繼續跑），
+     而且回到首頁也停不掉，只能整個分頁關掉。 */
+  hushRound(); stopAll();
   voiceLeave(); letSleep(); hideClock(); showGear(false); sendingSkin(false);
   Net=null; room=null; roomCode=null; isHost=false; mySeat=null;
   roomPlay="buzz"; relayTask=null; chainRun=null;
@@ -5149,6 +5160,30 @@ function renderRoom(){
     '</span></div>').join("");
   micWatch(showMic);
   $("roomcount").textContent=list.length;
+
+  /* 🔴 只要離開「唱／猜」這兩個階段，就一定要把還在響的聲音關掉。
+     ⚠ 這行是 2026-08-17 補的，缺了它就是 Alvis 回報的
+       「猜完之後音檔一直亂播、完全聽不了」。原因在下面那段 if/else：
+       負責關聲音的 setupLive() 只掛在 st==="live"||st==="guess" 那條分支上，
+       狀態一進 reveal 就走另一條，**再也沒有任何人去碰那個振盪器**，
+       它就撐在最後一個音上不放；換下一輪、離開房間都甩不掉，
+       連按「■ 停」都沒用（stopAll 碰不到它）。
+     ⚠ 要放在整串 if/else「之前」。放進某一條分支就又會漏掉別的狀態，
+       這個 bug 本身就是這樣來的。 */
+  if(st!=="live"&&st!=="guess") hushRound();
+
+  /* 🔴 換一輪＝上一輪收到的旋律要整條丟掉。2026-08-17 補的。
+     ⚠ 本來只靠 setupLive 裡那句「lv.take 變了就清空」，但那個編號是
+       **每個人自己從 1 開始數的**（liveTake 是各自瀏覽器裡的計數器）：
+       第一輪阿明出題送 take=1，第二輪換小美出題她送的也是 take=1，
+       聽的人一比「一樣嘛」就不清空 → 上一輪的旋律留著，一輪一輪疊上去。
+       四個人跑三輪實測：收到的點數 288 → 558 → 845，每輪都在長。
+     會壞掉的地方不只是記憶體：
+       ① 旋律圖會把前面幾輪的線一起畫出來
+       ② curve 就是這條，所以揭曉按「再聽一次」會把前面每一輪接在一起播，
+          第三輪按下去等於連放三輪 —— Alvis 說的「音檔一直亂播」就是這個。
+     改看 round，不要看那個每人各自為政的編號。 */
+  if(room.round!==lvRound){ lvRound=room.round; try{ liveReset(-1); }catch(e){} lvSeg=-1; }
 
   /* 新的一輪：上一輪抓下來的原音要丟掉，不然會聽到上一題的 */
   if(st==="lobby"||st==="compose"){
@@ -5372,6 +5407,13 @@ async function setupLive(){
     if(!amPerformer()) liveFeed(lv.f);
     if(lv.done) liveAudioFinish();
   }
+  /* 🔴 已經進「猜」＝他一定唱完了，讓串流那條聲音收尾。2026-08-17 補的。
+     上面那行 liveAudioFinish() 綁在 st==="live" 裡面，
+     所以只要「他放開按鈕」和「狀態變成 guess」擠在同一次更新裡送到，
+     這邊看到的 st 已經是 guess，那行就跳過了——聲音會撐著猜的那 60 秒不放。
+     用 finish 不是 stop：它排在「收到的最後一格」那個時間點才停，
+     尾巴自然收掉；如果那個時間已經過了就等於馬上停。 */
+  if(st==="guess") liveAudioFinish();
   /* 確認之後：整條資料已經收齊，改用完整曲線（可以重播、可以壓住重聽）。
      ⚠ 中途才進房間的人這時候 lvCurve 是空的，要補收一次，
         但不能出聲——不然他一進來就被放一段。 */
@@ -6545,6 +6587,9 @@ function renderRelayReveal(){
 /* ================= 聽的人：邊收邊播 ================= */
 let LV=null, lvTake=-1, lvSeen={}, lvCurve=[], lvDrawRAF=null;
 let lvSeg=-1;      // 歌詞不達意：現在收到的是第幾段話
+/* 現在收到的是第幾輪。用來判斷「換一輪了，上一輪的旋律要丟掉」——
+   不能用 live/take，那個編號每個出題的人都從 1 開始，換人根本比不出來。 */
+let lvRound=-1;
 /* 直播現在跑得順不順（Discord 版會顯示在畫面角落）。
    最重要的是 resync：它是 0 就代表緩衝夠用，一直跳就代表要調大。
    玩完一場看這幾個數字再決定，不要先猜。 */
@@ -6660,6 +6705,25 @@ function liveAudioFinish(){
   const dead=LV; LV=null;
   setTimeout(()=>{ try{dead.gain.disconnect();}catch(e){} },1200);
 }
+/* 🔴 把「還在響的東西」一次關乾淨。2026-08-17 補的。
+   遊戲裡會出聲的有五種，但清理的責任散在五個不同的地方，其中兩種根本沒人管：
+
+   | 誰在響 | 是什麼 | 本來誰會關 |
+   |---|---|---|
+   | voices | 重播樂器版 | stopAll() ✓ |
+   | mixSrc | 混音播放 | stopAll() ✓ |
+   | __raw  | 原音 | stopAll() ✓ |
+   | LV     | 聽別人唱歌的串流音 | 只有「他重唱換 take」時 ✗ |
+   | MON    | 出題者自己的監聽音 | 只有「放開按鈕」時 ✗ |
+
+   最後兩種只要沒走到那唯一的出口，就會一直響下去：
+   揭曉、換下一輪、離開房間、時間到，全部都甩不掉。
+   ⚠ 用 try 包起來是因為 LV／MON 宣告在檔案後面，
+     頁面剛開的時候 stopAll() 可能比它們早跑到，直接碰會炸。 */
+function hushRound(){
+  try{ liveAudioStop(); }catch(e){}
+  try{ monEnd(); }catch(e){}
+}
 function liveAudioStop(){
   lvFace=null;
   if(!LV) return;
@@ -6678,7 +6742,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817g";
+const BUILD="0817h";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
