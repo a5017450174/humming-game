@@ -1357,6 +1357,12 @@ body.sending #sendtag{display:flex}
           <span>這輪是<b>唱給你聽</b>的
             <span class="sub">你第一個猜到分數最高；被別人搶先，出題的人就白唱了</span></span></div>
         <p class="dim" style="text-align:center">他唱完你就會聽到，先想想等一下要怎麼猜。</p>
+        <!-- 🔴 等太久要講出來，而且要給得出救援。2026-08-17 Alvis 要的：
+             「畫面上永遠要寫現在在等誰做什麼」。
+             出題的人卡住（當機、電話、找不到歌）本來完全沒救，全場只能一起乾等。 -->
+        <p class="tiny" id="waitHow" style="text-align:center;display:none"></p>
+        <button class="btn sm wide" id="waitSkip" style="display:none;margin-top:10px"
+          onclick="rescueRound()">他好像卡住了，跳過這一輪</button>
       </div>
     </div>
   </div>
@@ -5357,7 +5363,16 @@ function renderRoom(){
   if(st==="lobby"){
     $("rmLobby").style.display="";
     $("hostStart").style.display=isHost?"":"none";
+    /* 🔴 「等房主開始」要講出房主是誰，不然新來的人根本不知道要催誰。
+       人數還不夠的時候，等的其實是「人」不是房主，要講對。 */
     $("waitHost").style.display=isHost?"none":"";
+    if(!isHost){
+      const h=(room.players||{})[room.host]||{};
+      const 夠人=list.length>=((room.mode||"buzz")==="discord"?3:2);
+      $("waitHost").textContent=夠人
+        ? "等房主 "+(h.name||"（不在）")+" 按開始…"
+        : "還在等人進來（現在 "+list.length+" 個）。把房號給朋友就好。";
+    }
     $("modeBox").style.display=isHost?"":"none";
     /* 選角色只有歌詞不達意用得到——其他玩法沒有台上台下 */
     $("chBox").style.display=isDiscord()?"":"none";
@@ -5415,6 +5430,8 @@ function renderRoom(){
     $("waitWho").textContent=(p.name||"有人")+" 正在想歌…";
     /* 🔴 這輪指定給我＝現在就講，不要等開唱。 */
     $("waitPick").style.display=(isDiscord()&&room.pick&&room.pick===myId)?"":"none";
+    /* 🔴 等太久要講出來，而且要給得出救援 */
+    composeWaitUI();
   }
   else if(st==="live"||st==="guess"){
     if(amPerformer()){
@@ -5506,8 +5523,9 @@ async function assignPick(ids,performer,r){
   return pick;
 }
 
-/* skip=true：跳過原本輪到的那個人，直接換下一個（round 多跳一號）。 */
-async function startRound(skip){
+/* skip=true：跳過原本輪到的那個人，直接換下一個（round 多跳一號）。
+   rescue=true：這是「卡住了」的救援，按鈕本身已經被時間鎖住了，這裡不再擋身分。 */
+async function startRound(skip,rescue){
   const md=room.mode||"buzz";
   /* 🔴 2026-08-17：歌詞不達意改成「下一個要唱的人自己按」，
      所以不能再只認房主。誰按得動由 revNextUI 決定，這裡只擋明顯不合理的：
@@ -5516,7 +5534,7 @@ async function startRound(skip){
   if(md!=="discord"){ if(!isHost) return; }
   else{
     const nx=nextPerformer();
-    const 可以=(nx&&nx.id===myId)||isHost||(room.performer===myId);
+    const 可以=rescue||(nx&&nx.id===myId)||isHost||(room.performer===myId);
     if(!可以) return;
     /* ⚠ 兩個人同時按會開兩輪。用「我看到的輪次」當門票，
        開之前先確認沒人搶先開過。 */
@@ -5658,10 +5676,17 @@ async function setupLive(){
   if(me) $("livemineword").textContent=pz.target||"";
 
   if(st==="live"&&dc){
-    /* 歌詞不達意整輪都停在 live，所以倒數要在這裡跑 */
-    $("livestate").innerHTML=(lv.done
-      ? '<i class="dot wait"></i>他停下來了…'
-      : '<i class="dot rec"></i>他正在說話')+
+    /* 歌詞不達意整輪都停在 live，所以倒數要在這裡跑
+       🔴 2026-08-17：多分出「他還沒開始唱」這一種。
+          本來只有兩種（正在說話／停下來了），他按下按鈕之前 done 是空的，
+          所以會顯示「他正在說話」——但其實一點聲音都還沒出來，
+          聽的人會以為是自己聽不到，開始亂調音量。 */
+    const 還沒開始=!lv.done&&!(lv.f&&Object.keys(lv.f).length)&&!(lvCurve&&lvCurve.length);
+    $("livestate").innerHTML=(還沒開始
+      ? '<i class="dot wait"></i>他還沒開始唱…'
+      : (lv.done
+        ? '<i class="dot wait"></i>他停下來了…'
+        : '<i class="dot rec"></i>他正在說話'))+
       '　還有 <b id="livetime">—</b>';
     $("livetimebox").style.display="none";
     startCountdown();
@@ -5840,8 +5865,10 @@ function revNextUI(){
   if(revSince.round!==(room.round||0)) revSince={round:(room.round||0),at:Date.now()};
   const 等了=(Date.now()-revSince.at)/1000;
 
+  /* ⚠ 同上：下一個要唱的人自己就是房主的話，中間那層沒有意義，直接放行。 */
+  const 下一個是房主=!!(下一個&&下一個.id===room.host);
   const 第二層=他不在||等了>=25;      // 房主可以出手
-  const 第三層=他不在||等了>=45;      // 剛剛唱完的人也可以出手
+  const 第三層=他不在||等了>=(下一個是房主?25:45);  // 剛剛唱完的人也可以出手
   const 我按得動=我是下一個||(isHost&&第二層)||(我剛唱完&&第三層);
   /* 跳過只在「不是他自己」的時候才有意義——他自己按「下一輪」就好 */
   const 我跳得動=!我是下一個&&((isHost&&第二層)||(我剛唱完&&第三層));
@@ -5858,6 +5885,50 @@ function revNextUI(){
   if($("s-room").classList.contains("on")&&$("rmReveal").style.display!=="none"&&!第三層)
     setTimeout(()=>{ if(room&&room.state==="reveal") revNextUI(); },1000);
 }
+
+/* 🔴 「他正在想歌」等太久怎麼辦。2026-08-17 補的。
+   出題的人卡住（當機、接電話、找不到歌、或就是在發呆）本來**完全沒有救**：
+   handleLeavers 只認「他從名單上消失」，人還在但不動的話全場一起乾等到天亮。
+   Alvis 講的「畫面上永遠要寫現在在等誰做什麼」，這裡是最需要的一格。
+
+   跟揭曉那套同一個節奏，但等久一點——想歌本來就要花時間，
+   太早跳出「跳過他」會變成催人，反而給壓力。
+   ⚠ 時間一樣記在本機，不要新增房間欄位（規則是白名單，新欄位會被擋）。 */
+let cmpSince={round:-1,at:0};
+function composeWaitUI(){
+  const 有 = id=>$(id);
+  if(!有("waitHow")||!有("waitSkip")) return;
+  if(cmpSince.round!==(room.round||0)) cmpSince={round:(room.round||0),at:Date.now()};
+  const 等了=Math.round((Date.now()-cmpSince.at)/1000);
+  const p=(room.players||{})[performerId()]||{};
+  const 他不在=!((room.players||{})[performerId()]);
+
+  /* 15 秒之前不要講「等了幾秒」——那是正常的思考時間，講出來只是在催他 */
+  $("waitHow").style.display=(等了>=15||他不在)?"":"none";
+
+  /* ⚠ 卡住的那個人自己就是房主的話，「等房主出手」那一層等於沒有——
+     房主也會輪到出題，這其實是最常見的情況。實測就中了：
+     卡住的是房主，其他人白等到 70 秒才等到按鈕。
+     所以房主就是出題者的時候，直接跳過中間那層，40 秒大家都能按。 */
+  const 卡住的是房主=(performerId()===room.host);
+  const 房主可以=他不在||等了>=40;
+  const 大家可以=他不在||等了>=(卡住的是房主?40:70);
+  const 我可以=(isHost&&房主可以)||大家可以;
+  $("waitSkip").style.display=(我可以&&!amPerformer())?"":"none";
+  $("waitSkip").textContent=他不在?"他離開了，跳過這一輪":"他好像卡住了，跳過這一輪";
+  /* ⚠ 按鈕出來之後就不要再報秒數了。
+     下面那個自我重算會停掉，數字會凍在原地不動——看起來像畫面當掉。
+     改成講「已經很久了」，不給會凍住的數字。 */
+  $("waitHow").textContent=他不在
+    ? "他好像離開了。"
+    : (我可以 ? "他已經很久沒有動作了。"
+             : "已經等 "+等了+" 秒了。"+(等了>=40?"":"（挑歌本來就要一點時間）"));
+
+  if($("s-room").classList.contains("on")&&$("rmWait").style.display!=="none"&&!大家可以)
+    setTimeout(()=>{ if(room&&room.state==="compose") composeWaitUI(); },1000);
+}
+/* 救援：直接換下一個人出題。這一輪就當作沒發生過。 */
+async function rescueRound(){ return startRound(true,true); }
 
 /* 跳過這一輪：round 直接多跳一號，出題的人就換成下一個。
    ⚠ 故意用現有的 round 欄位，不新增欄位——資料庫規則是白名單，
@@ -7010,7 +7081,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817j";
+const BUILD="0817k";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
