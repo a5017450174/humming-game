@@ -555,6 +555,67 @@ input[readonly]{font-size:13px;color:var(--dim)}
 /* 謎底幾個字的空格子（2026-08-16 Alvis 要求要一眼看到） */
 .wblanks i{display:inline-block;width:26px;height:30px;border:2px dashed var(--gold);
   border-radius:7px;margin-right:5px;vertical-align:middle;opacity:.85}
+/* 大倒數（2026-08-17 Alvis 要的）：整個畫面上方置中，最後十秒變大變紅跳動。
+   ⚠ 不能擋到底下的東西：pointer-events:none，而且只在有倒數的時候出現。 */
+#bigclock{position:fixed;top:12px;left:50%;transform:translateX(-50%);
+  z-index:90;pointer-events:none;display:none;text-align:center;
+  font-variant-numeric:tabular-nums;line-height:1}
+#bigclock.on{display:block}
+#bigclock b{display:inline-block;font-size:46px;font-weight:800;color:var(--gold);
+  padding:6px 18px;border-radius:14px;background:rgba(20,17,13,.82);
+  border:1px solid rgba(245,185,66,.35);box-shadow:0 6px 22px rgba(0,0,0,.45)}
+#bigclock i{display:block;font-style:normal;font-size:12px;color:var(--dim);margin-top:4px}
+#bigclock.hot b{font-size:76px;color:#fff;background:rgba(200,60,40,.92);
+  border-color:rgba(255,180,160,.6);animation:clockpulse .5s ease-in-out infinite}
+#bigclock.hot i{color:#ffd9cf}
+@keyframes clockpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+@media (max-width:520px){ #bigclock b{font-size:38px} #bigclock.hot b{font-size:60px} }
+@media (prefers-reduced-motion:reduce){ #bigclock.hot b{animation:none} }
+/* ===== 右上角齒輪＋設定面板（2026-08-17）=====
+   層級照原本的規矩排：大倒數 90 → 遮罩 100 → 面板 101 → 齒輪 102。
+   ⚠ 不要用 9999 那種隨便的大數字，之後會互相打架。 */
+#gearBtn{position:fixed;top:10px;right:10px;z-index:102;display:none;
+  width:44px;height:44px;align-items:center;justify-content:center;   /* 手指點得到：44×44 */
+  border-radius:12px;border:1px solid #4a4436;background:rgba(24,21,16,.9);
+  color:var(--gold);cursor:pointer;transition:transform .15s ease,background .15s ease}
+#gearBtn.on{display:flex}
+#gearBtn:hover{background:rgba(40,35,26,.95)}
+#gearBtn:active{transform:scale(.94)}
+#gearBtn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#setScrim{position:fixed;inset:0;z-index:100;display:none;background:rgba(0,0,0,.5)}
+#setScrim.on{display:block}
+#setPanel{position:fixed;top:62px;right:10px;z-index:101;display:none;
+  width:min(340px,calc(100vw - 20px));max-height:min(70vh,560px);overflow:auto;
+  background:#181510;border:1px solid #4a4436;border-radius:16px;
+  box-shadow:0 18px 44px rgba(0,0,0,.55);
+  animation:setin .16s ease-out}                 /* 從齒輪那邊長出來，不要用跳的 */
+#setPanel.on{display:block}
+@keyframes setin{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){ #setPanel{animation:none} }
+.sethead{display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-bottom:1px solid #322c22;position:sticky;top:0;background:#181510}
+/* 危險動作：跟其他設定拉開距離，字用紅的，按了要再確認一次 */
+.setsec.danger{margin-top:6px;padding-top:12px}
+#leaveBtn{color:var(--rose);border-color:rgba(232,122,84,.4)}
+#leaveBtn.danger{background:rgba(200,60,40,.9);color:#fff;border-color:rgba(255,180,160,.6)}
+/* 語音那行：正常時低調，缺人或壞掉才醒目 */
+.vline.quiet{opacity:.5}
+.vline.alert{opacity:1}
+/* 大廳的開始鈕黏在底部（手機上永遠按得到）。
+   ⚠ 用 sticky 不用 fixed：fixed 會蓋住底下的內容還要另外補空白，sticky 會自己讓位。 */
+.startbar{position:sticky;bottom:8px;z-index:5}
+.startbar>.core{box-shadow:0 10px 26px rgba(0,0,0,.5)}
+/* 怎麼玩：收合起來，想看再點 */
+.howdet>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:12px 14px;cursor:pointer;list-style:none;min-height:44px;box-sizing:border-box}
+.howdet>summary::-webkit-details-marker{display:none}
+.howdet>summary:focus-visible{outline:2px solid var(--gold);outline-offset:-2px;border-radius:12px}
+.howdet[open]>summary{border-bottom:1px solid #322c22}
+.howdet>summary .eyebrow{margin:0}
+.setbody{padding:6px 14px 14px}
+.setsec{padding:10px 0}
+.setsec+.setsec{border-top:1px solid #322c22}
+.btn.wide{width:100%;margin-top:8px}
 /* 選麥克風那排＋朋友個別音量（2026-08-16） */
 .microw{display:flex;gap:8px;align-items:center;margin:6px 0}
 .microw select{flex:1;min-width:0;background:#181510;color:#e8e2d0;border:1px solid #4a4436;
@@ -1015,9 +1076,8 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <div class="tkmeter"><i id="tkMeter"></i></div>
   <!-- 用喇叭的人一定會回授（自己的樂器聲被自己麥克風收回去，變成停不掉的長音）。
        這顆讓他直接關掉「自己聽自己」，設定會記住。 -->
-  <div class="row" style="justify-content:center;margin-top:6px">
-    <button class="btn sm" id="monBtn" onclick="monToggle()">我在用喇叭：關掉自己的樂器聲</button>
-  </div>
+  <p class="tiny dim" id="tkDuck" style="text-align:center;margin:6px 0 0">
+    現在聽得到大家在討論——聽完可以再按住補唱一次</p>
 
   <p class="warn" id="talkhid" style="display:none">
     <b>剛剛切走了，那一段沒送出去。</b>要發出聲音的時候，這個視窗必須看得到——
@@ -1049,13 +1109,6 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <div class="eyebrow t"><i></i>房號 <b id="roomcode" style="letter-spacing:.2em">----</b>
       　<span id="roomcount">1</span> 人</div>
     <p class="tiny" id="voiceline" style="display:none"></p>
-    <!-- 房間裡也能換麥克風（跟首頁那個是同一份設定） -->
-    <div class="microw" id="microw1" style="display:none">
-      <span class="tiny dim">用哪支麥克風</span>
-      <select id="micSel1" onchange="micPicked(this.value)"></select>
-    </div>
-    <!-- 每個朋友一條音量（只影響你自己聽到的） -->
-    <div id="voicevols" style="display:none"></div>
   </div>
 
   <div class="shell">
@@ -1065,22 +1118,24 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <!-- 等開始 -->
   <div id="rmLobby">
     <div class="shell">
-      <div class="core teal">
-        <div class="ready">把房號給朋友</div>
-        <!-- 房號用背的很煩，尤其在手機上。直接給一條點了就進房的連結。 -->
+      <!-- ⚠ 2026-08-17 壓縮：這塊本來很高（大標題＋兩段說明），
+           會把下面的「選角色」和「開始」推到螢幕外，手機尤其明顯。
+           留最重要的那顆按鈕，說明縮成一行小字。 -->
+      <div class="core teal pad-s">
         <button class="btn go wide" id="roomlinkbtn" onclick="copyRoomLink()">
           複製房間連結 <span class="cir">⧉</span></button>
-        <p class="dim" style="text-align:center">貼到群組，他們點開就直接進來。
-          也可以直接報房號給他們打。</p>
+        <p class="tiny" style="text-align:center;margin:6px 0 0">貼到群組，點開就進來；報房號給他們打也可以。</p>
         <p class="tiny" id="lobbyHint" style="text-align:center"></p>
       </div>
     </div>
     <!-- 怎麼玩：只有歌詞不達意會顯示。
          ⚠ 放這裡不放首頁——用房號直接進來的人根本不會經過首頁。
             而且等人的時候最閒，一定會看。 -->
-    <div class="shell" id="howBox" style="display:none">
+    <!-- ⚠ 2026-08-17 改成收合：四格漫畫很高，會把「選角色」和「開始」推到螢幕外，
+         第二局之後也沒人再看。想看的人自己點開，看過的人畫面就乾淨。 -->
+    <details class="shell howdet" id="howBox" style="display:none">
+      <summary><span class="eyebrow t"><i></i>怎麼玩</span><span class="tiny dim">點開看四格</span></summary>
       <div class="core">
-        <div class="eyebrow t"><i></i>怎麼玩</div>
         <div class="comic4" id="comic4"><i></i><i></i><i></i><i></i></div>
         <!-- 提醒集中放這裡。等人的時候最閒，一定會看；
              玩到一半的畫面在倒數，那時候丟字給他等於沒寫。
@@ -1090,7 +1145,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
           按著說話也發不出聲音）。iPhone 記得把側邊的<b>靜音鍵關掉</b>，
           不然聽不到聲音。</p>
       </div>
-    </div>
+    </details>
     <!-- ⚠ 只有房主看得到。其他人點了也沒用（只有房主能改玩法、能開始），
          但畫面沒講，他們會坐在那邊研究三段說明，研究完才發現不干自己的事。 -->
     <!-- 選角色。⚠ 一人一隻不能重複——台下那排如果有兩隻一樣的，認人就失效了，
@@ -1103,9 +1158,12 @@ input[readonly]{font-size:13px;color:var(--dim)}
           其他人在台下看你的背影。</p>
       </div>
     </div>
-    <div class="shell" id="modeBox">
+    <!-- ⚠ 2026-08-17 收合：三種玩法各帶一段說明，整塊很高，
+         但九成的時候不會改（預設就是歌詞不達意）。想換的人再點開。 -->
+    <details class="shell howdet" id="modeBox">
+      <summary><span class="eyebrow t"><i></i>玩哪一種</span>
+        <span class="tiny dim"><b id="modeNow">歌詞不達意</b>・點開可以換</span></summary>
       <div class="core">
-        <div class="eyebrow t"><i></i>要玩哪一種</div>
         <div class="modes" id="modePick">
           <button class="modebtn on" id="mdDiscord" onclick="pickMode('discord')">
             <b>歌詞不達意</b>
@@ -1124,12 +1182,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
         </div>
         <p class="tiny" id="modeNote" style="display:none"></p>
       </div>
-    </div>
-    <div class="shell">
-      <div class="core teal">
+    </details>
+    <!-- ⚠ 2026-08-17 改成黏在畫面底部：這是大廳唯一真正要按的東西，
+         但上面的名單、角色、玩法加起來很長，手機上它會被推到螢幕外，
+         房主會以為還不能開始。黏著就永遠按得到。 -->
+    <div class="shell startbar">
+      <div class="core teal pad-s">
         <button class="btn go wide" id="hostStart" onclick="startRound()">
           大家到齊了，開始 <span class="cir">→</span></button>
-        <p class="dim" id="waitHost" style="text-align:center;display:none">等房主開始…</p>
+        <p class="dim" id="waitHost" style="text-align:center;display:none;margin:0">等房主開始…</p>
       </div>
     </div>
   </div>
@@ -1250,7 +1311,9 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <p class="dim" id="relayNextWait" style="text-align:center;display:none">等房主開下一輪…</p>
   </div>
 
-  <button class="btn sm" onclick="leaveRoom()" style="align-self:flex-start">離開房間</button>
+  <!-- ⚠ 2026-08-17「離開房間」搬進右上角齒輪了。
+       理由（UI 規則 destructive-nav-separation）：會把人踢出遊戲的動作，
+       不應該跟「下一輪」「送出」那些每局都在按的按鈕排在一起，太容易誤觸。 -->
 </div>
 
 <!-- ======== 混音台：只有一份，需要的畫面就把它搬過去 ========
@@ -1295,6 +1358,49 @@ input[readonly]{font-size:13px;color:var(--dim)}
      而且嘴巴可以無段跟著音量變。需要的畫面就把它搬過去。 -->
 <!-- 別人的聲音掛在這裡。⚠ 一定要真的放進畫面，
      用 new Audio() 但不放進 DOM 的話 iOS Safari 常常整個不出聲。 -->
+<!-- 大倒數：唱／猜的那一分鐘裡固定浮在畫面上方 -->
+<div id="bigclock" aria-hidden="true"><b id="bigclocknum">60</b><i id="bigclocklbl">還可以猜</i></div>
+
+<!-- ======== 設定（右上角齒輪）========
+     2026-08-17 Alvis 要的：麥克風、每個人的音量這種「設定好就不會再碰」的東西
+     不要常駐在遊戲畫面上，收進齒輪裡，畫面才乾淨。
+     ⚠ 齒輪用 SVG 不用 emoji（emoji 每台電腦長得不一樣、也沒辦法跟著配色）。
+     ⚠ 只有圖沒有字的按鈕一定要有 aria-label，不然用讀螢幕軟體的人不知道那是什麼。 -->
+<button id="gearBtn" aria-label="設定" aria-expanded="false" onclick="toggleSettings()">
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3.2"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.08A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+</button>
+<div id="setScrim" onclick="closeSettings()"></div>
+<div id="setPanel" role="dialog" aria-modal="true" aria-label="設定">
+  <div class="sethead">
+    <b>設定</b>
+    <button class="btn sm" onclick="closeSettings()" aria-label="關閉設定">關閉</button>
+  </div>
+  <div class="setbody">
+    <div class="setsec">
+      <div class="eyebrow"><i></i>麥克風</div>
+      <div class="microw" id="microw1">
+        <select id="micSel1" onchange="micPicked(this.value)" aria-label="用哪支麥克風"></select>
+      </div>
+      <p class="tiny dim" id="micOne" style="display:none">這台只有一支麥克風，不用選。</p>
+      <button class="btn sm wide" id="monBtn" onclick="monToggle()">我在用喇叭：關掉自己的樂器聲</button>
+      <p class="tiny dim">用喇叭的話，自己的樂器聲會被麥克風收回去變成長長的回音。關掉就好。</p>
+    </div>
+    <div class="setsec">
+      <div class="eyebrow t"><i></i>每個人的音量</div>
+      <div id="voicevols"></div>
+      <p class="tiny dim" id="voicevolsEmpty">還沒有人連上語音。有人進來之後，這裡會一個人一條。</p>
+    </div>
+    <!-- 危險動作放最後、跟其他設定分開，而且要按兩次才會真的離開 -->
+    <div class="setsec danger">
+      <button class="btn sm wide" id="leaveBtn" onclick="leaveAsk()">離開房間</button>
+      <p class="tiny dim" id="leaveHint" style="display:none">再按一次就真的離開，分數不會留著。</p>
+    </div>
+  </div>
+</div>
 <div id="voicesink" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"></div>
 
 <div id="facebox" aria-hidden="true">
@@ -4212,6 +4318,8 @@ async function refreshMicSels(){
     sel.innerHTML=named.map(d=>'<option value="'+esc(d.deviceId)+'"'+
       (d.deviceId===MIC_PICK?" selected":"")+'>'+esc(d.label)+'</option>').join("");
   }
+  /* 設定面板裡如果沒東西可選，要講一句話，不要留一塊空白讓人以為壞了 */
+  const one=$("micOne"); if(one) one.style.display=(named.length<2)?"":"none";
 }
 function micPicked(v){
   MIC_PICK=v; try{ localStorage.setItem("micPick",v); }catch(e){}
@@ -4227,14 +4335,41 @@ try{ navigator.mediaDevices.addEventListener("devicechange",refreshMicSels); }ca
      正解：聲音改走 GainNode，還能放大到 200%。 */
 function voiceVolSet(id,v){
   voiceVol[id]=v/100;
-  if(voiceGains[id]) try{ voiceGains[id].g.gain.value=v/100; }catch(e){}
+  applyVoiceGain(id);
   const b=$("vv_"+id); if(b) b.textContent=v+"%";
+}
+/* ================= 唱的時候先聽不到大家，放開就聽得到 =================
+   2026-08-17 Alvis 定的：A 按住唱歌時，BCD 在旁邊互相討論；
+   A 一放開就聽得到他們在講什麼，可以馬上針對他們的誤解再唱一次。
+   ⚠ 技術上這條也是必要的：唱的時候如果大家的聲音從喇叭出來，
+     會被 A 自己的麥克風收回去，音高偵測就會抓到別人的聲音，整條線都歪掉。 */
+let voiceDuck=false;
+function applyVoiceGain(id){
+  const v=(voiceVol[id]!=null)?voiceVol[id]:1;
+  const gn=voiceGains[id]; if(!gn) return;
+  try{ gn.g.gain.setTargetAtTime(voiceDuck?0:v,AC.currentTime,0.02); }catch(e){
+    try{ gn.g.gain.value=voiceDuck?0:v; }catch(e2){}
+  }
+}
+function voiceDuckAll(on){
+  voiceDuck=!!on;
+  for(const id in voiceGains) applyVoiceGain(id);
+  const w=$("tkDuck");
+  if(w) w.textContent=voiceDuck
+    ? "唱的時候先聽不到大家（放開就聽得到他們在討論什麼）"
+    : "現在聽得到大家在討論——聽完可以再按住補唱一次";
 }
 function renderVoiceVols(){
   const box=$("voicevols"); if(!box) return;
   const ids=Object.keys(voicePeers);
-  if(voiceState!=="on"||!ids.length){ box.style.display="none"; voiceVolsSig=""; return; }
+  const empty=$("voicevolsEmpty");
+  if(voiceState!=="on"||!ids.length){
+    box.style.display="none"; voiceVolsSig="";
+    if(empty) empty.style.display="";
+    return;
+  }
   box.style.display="";
+  if(empty) empty.style.display="none";
   /* 只有成員或名字變了才重畫——不然畫面一更新，拉到一半的拉霸會被打斷 */
   const sig=ids.slice().sort().join(",")+"|"+ids.map(i=>voiceNames[i]||"").join(",");
   if(sig===voiceVolsSig) return;
@@ -4327,7 +4462,8 @@ async function voiceJoin(code){
         keep.play().catch(()=>{});
         const src=AC.createMediaStreamSource(s);
         const g=AC.createGain();
-        g.gain.value=(voiceVol[id]!=null)?voiceVol[id]:1;
+        /* 正在唱的話新接上來的人也要一起壓掉，不然他會突然冒出來 */
+        g.gain.value=voiceDuck?0:((voiceVol[id]!=null)?voiceVol[id]:1);
         const out=AC.createMediaStreamDestination();
         src.connect(g); g.connect(out);
         if(voiceGains[id]){ try{ voiceGains[id].g.disconnect(); }catch(e){}
@@ -4440,10 +4576,14 @@ function renderVoice(){
                          : '還沒找到其他人';
     /* 混音系統還在睡＝朋友的聲音出不來。這比「缺幾個人」都優先，先講這個 */
     if(n>0&&typeof AC!=="undefined"&&AC&&AC.state==="suspended"){
+      el.className="tiny vline alert";
       el.innerHTML='<i class="dot rec"></i><b class="gold">聲音被瀏覽器擋住了——'+
         '點畫面任何地方一下，就聽得到大家了。</b>';
       return;
     }
+    /* ⚠ 2026-08-17：一切正常的時候這行要低調（它只是「沒事」的證明），
+       缺人或壞掉才跳出來。全部都一樣醒目＝等於都不醒目。 */
+    el.className="tiny vline"+((miss>0&&others>0)?" alert":" quiet");
     el.innerHTML=(miss>0&&others>0)
       ? '<i class="dot rec"></i><b class="gold">語音缺 '+miss+' 個人</b>——'+
         /* ⚠ 這裡算的是「除了你以外的人」。寫「房間 N 個人」會跟上面的
@@ -4454,8 +4594,10 @@ function renderVoice(){
       : '<i class="dot wait"></i>語音通了，聽得到 '+n+' 個人'+
         (muted?'　<b class="gold">你的麥克風已經關掉（輪到你出題）</b>':'');
   }else if(voiceState==="trying"){
+    el.className="tiny vline quiet";
     el.innerHTML='<i class="dot wait"></i>正在接語音…';
   }else if(voiceState==="fail"){
+    el.className="tiny vline alert";
     el.innerHTML='<i class="dot rec"></i><b>語音接不起來</b>——改開 Discord 之類的就好，'+
       '遊戲本身照玩。<span class="tiny">（'+esc(voiceWhy.slice(0,60))+'）</span>';
   }else el.style.display="none";
@@ -4611,6 +4753,59 @@ function roomOn(path,cb){ if(Net) unwatch.push(Net.watch(path,cb)); }
 function roomOff(){ for(const f of unwatch){ try{ f(); }catch(e){} } unwatch=[]; clearRoundTimer(); }
 function clearRoundTimer(){ if(roundTimer){ clearInterval(roundTimer); roundTimer=null; } }
 
+/* ================= 大倒數 =================
+   2026-08-17 Alvis 要的：一輪 60 秒，倒數要「非常明顯」，畫面置中偏上，
+   最後十秒要更誇張。出題的人和猜的人共用這一顆，兩邊的計時器都來餵它。
+   ⚠ 只有歌詞不達意用得到。其他玩法本來就有自己的倒數，不要突然多一顆。 */
+function paintClock(left,label){
+  const box=$("bigclock"); if(!box) return;
+  if(left==null||left<0){ box.className=""; return; }
+  const n=Math.max(0,Math.ceil(left));
+  $("bigclocknum").textContent=n;
+  $("bigclocklbl").textContent=label||(n<=10?"快沒時間了！":"還可以猜");
+  box.className="on"+(n<=10?" hot":"");
+}
+function hideClock(){ const box=$("bigclock"); if(box) box.className=""; }
+
+/* ================= 右上角齒輪的設定面板 =================
+   2026-08-17 Alvis 要的：麥克風、每個人的音量收進來，遊戲畫面留乾淨。
+   ⚠ 一定要有出口：關閉鈕、點外面、按 Esc，三種都可以關。 */
+function openSettings(){
+  $("setPanel").classList.add("on");
+  $("setScrim").classList.add("on");
+  $("gearBtn").setAttribute("aria-expanded","true");
+  refreshMicSels(); renderVoiceVols(); renderMonBtn();
+}
+function closeSettings(){
+  $("setPanel").classList.remove("on");
+  $("setScrim").classList.remove("on");
+  $("gearBtn").setAttribute("aria-expanded","false");
+}
+function toggleSettings(){
+  $("setPanel").classList.contains("on")?closeSettings():openSettings();
+}
+/* 離開房間要按兩次。
+   ⚠ 不用瀏覽器內建的確認視窗——有些 App 內建瀏覽器會直接擋掉或丟錯（prompt 就踩過），
+     而且那種視窗在手機上長得很醜。就地把按鈕變成「確定要離開？」最保險。 */
+let leaveArmed=null;
+function leaveAsk(){
+  const b=$("leaveBtn"), h=$("leaveHint");
+  if(leaveArmed){ clearTimeout(leaveArmed); leaveArmed=null; leaveRoom(); return; }
+  b.textContent="確定要離開？"; b.classList.add("danger");
+  if(h) h.style.display="";
+  leaveArmed=setTimeout(()=>{     // 五秒沒再按就當他改變主意
+    leaveArmed=null; b.textContent="離開房間"; b.classList.remove("danger");
+    if(h) h.style.display="none";
+  },5000);
+}
+/* 只有在房間裡才需要這些設定，其他畫面不要放一顆齒輪在那裡 */
+function showGear(on){
+  const b=$("gearBtn"); if(!b) return;
+  b.classList.toggle("on",!!on);
+  if(!on) closeSettings();
+}
+addEventListener("keydown",e=>{ if(e.key==="Escape") closeSettings(); });
+
 function askName(){
   let n=(localStorage.getItem("myName")||"").trim();
   if(!n){
@@ -4727,6 +4922,7 @@ function enterRoom(){
   roomOn("",d=>{ room=d||{}; renderRoom(); });
   show("s-room");
   refreshMicSels();
+  showGear(true);          // 齒輪只在房間裡出現
 }
 async function leaveRoom(){
   /* ⚠ 語音要等「取消監聽」之後才能收。
@@ -4735,7 +4931,7 @@ async function leaveRoom(){
      然後跟著你進下一個房間。收在最前面反而收不掉。 */
   try{ if(Net&&myId) await Net.set("players/"+myId,null); }catch(e){}
   roomOff(); if(Net) Net.leave();
-  voiceLeave(); letSleep();
+  voiceLeave(); letSleep(); hideClock(); showGear(false);
   Net=null; room=null; roomCode=null; isHost=false; mySeat=null;
   roomPlay="buzz"; relayTask=null; chainRun=null;
   for(const k in hopCurveCache) delete hopCurveCache[k];
@@ -4785,6 +4981,8 @@ function renderRoom(){
   if(room.players&&room.players[myId]) mySeat=room.players[myId];
   isHost=room.host===myId;
   const st=room.state||"lobby";
+  /* 大倒數只在「唱／猜」那一分鐘出現，揭曉和大廳一定要收掉 */
+  if(!(isDiscord()&&(st==="live"||st==="guess"))) hideClock();
   const list=playerList();
 
   handleLeavers(list);
@@ -4850,6 +5048,9 @@ function renderRoom(){
       ? "至少要"+(need===3?"三":"兩")+"個人才能開始。把房號給朋友，他們輸入就進得來。"
       : list.length+" 個人在房間裡，隨時可以開始。";
     /* 玩哪一種只有房主能改，其他人看得到但按不動 */
+    /* 收合起來的時候，標題那行要講現在選的是哪一種，不然點開才知道 */
+    $("modeNow").textContent=(md==="discord")?"歌詞不達意"
+      :(md==="buzz")?"輪流出題，一起搶答":"一個傳一個";
     $("mdDiscord").classList.toggle("on",md==="discord");
     $("mdBuzz").classList.toggle("on",md==="buzz");
     $("mdRelay").classList.toggle("on",md==="relay");
@@ -5120,14 +5321,15 @@ function startCountdown(){
     const st=room&&room.state;
     /* 歌詞不達意整輪停在 live，所以倒數也要在 live 跑。
        ⚠ Net 也要檢查——離開房間時它會先被清掉，下一行的 Net.now() 會爆。 */
-    if(!Net||!(st==="guess"||(st==="live"&&isDiscord()))){ clearRoundTimer(); return; }
+    if(!Net||!(st==="guess"||(st==="live"&&isDiscord()))){ clearRoundTimer(); hideClock(); return; }
     const left=Math.max(0,Math.ceil(((room.deadline||0)-Net.now())/1000));
+    if(isDiscord()) paintClock(left);
     /* ⚠ 這顆是被 innerHTML 整段重畫出來的，重畫的那一瞬間會不在 */
     const el=$("livetime");
     if(el) el.textContent=(left>=60)
       ? Math.floor(left/60)+":"+String(left%60).padStart(2,"0")
       : left+" 秒";
-    if(left<=0){ clearRoundTimer(); maybeEndRound(); }
+    if(left<=0){ clearRoundTimer(); hideClock(); maybeEndRound(); }
   };
   tick(); roundTimer=setInterval(tick,250);
 }
@@ -5545,7 +5747,9 @@ function renderMonBtn(){
 }
 
 /* ================= 歌詞不達意：賭一個人 ================= */
-const TALK_SECS=180;          // 一輪最多三分鐘，時間到就揭曉
+/* 一輪 60 秒（2026-08-17 Alvis 定的，本來三分鐘太長、拖到大家都冷掉）。
+   時間到就揭曉。倒數會用大字顯示在畫面上方，最後十秒變紅色跳動。 */
+const TALK_SECS=60;
 let betOn=null;
 
 /* ⚠ 2026-08-15 改掉：以前是「你自己選要唱給誰」，現在是系統指定。
@@ -5660,6 +5864,7 @@ async function talkDown(){
   }
   const w=$("talkhid"); if(w) w.style.display="none";
   talking=true; setPtt(true);
+  voiceDuckAll(true);          // 唱的時候先聽不到大家（也避免被自己麥克風收回去）
   talkSeg++;
   cur=[]; liveSent=0; curve=null;
   await Net.set("live/f",null);
@@ -5674,6 +5879,7 @@ async function talkDown(){
 async function talkUp(){
   if(!talking) return;
   talking=false; recording=false; setPtt(false);
+  voiceDuckAll(false);         // 放開＝聽得到大家在討論，可以馬上補唱
   clearInterval(liveTimer); liveTimer=null;
   /* 最後幾格錄的時候還沒有「後面」可以比，現在補清，再連退掉的那幾格一起送 */
   for(let i=Math.max(0,cur.length-1-SPDELAY);i<cur.length;i++) despikeOne(cur,i);
@@ -5697,10 +5903,12 @@ function talkClock(){
   /* ⚠ 也要看 Net 在不在。離開房間的時候 Net 會先被清成 null，
      計時器如果剛好在那一瞬間觸發，Net.now() 就爆了。 */
   if(!room||!Net||room.state!=="live"||!amPerformer()){
-    clearInterval(talkTick2); talkTick2=null; return;
+    clearInterval(talkTick2); talkTick2=null; hideClock(); return;
   }
   const left=Math.max(0,Math.ceil(((room.deadline||0)-Net.now())/1000));
   $("tkTime").textContent=Math.floor(left/60)+":"+String(left%60).padStart(2,"0");
+  /* 唱的人也要看到同一顆大倒數——他要知道還剩多少時間可以補唱 */
+  paintClock(left,left<=10?"快沒時間了！":"這一輪剩下");
   const g=room.guesses||{};
   const keys=Object.keys(g).sort();
   $("tkChat").innerHTML=keys.map(k=>{
@@ -6277,7 +6485,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0816d";
+const BUILD="0817c";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
