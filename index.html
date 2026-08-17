@@ -722,6 +722,11 @@ input[readonly]{font-size:13px;color:var(--dim)}
   <div class="stack tight">
     <div class="eyebrow"><i></i><span id="qno">第 1 題</span></div>
     <h2 id="makehead">你要唱哪一首？</h2>
+    <!-- 想歌的時候麥克風是開的（2026-08-17 改的），要講清楚，
+         不然他會以為已經被關掉、然後把歌名講出來。 -->
+    <p class="tiny" id="mkMicOn" style="display:none">
+      <b class="gold">現在還講得到話</b>——想歌的時候大家聽得到你，
+      別把歌名說出來。<b>開始唱之後你的麥克風就會關掉。</b></p>
   </div>
 
   <!-- 一個傳一個：上一個人唱的那段。第一手沒有上一手，這一區就不出現 -->
@@ -1281,8 +1286,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <div class="mixslot" id="msReveal"></div>
     <!-- 歌詞不達意：重聽樂器版。大家手上本來就有整條旋律（畫捲軸用的那份），
          重播不用抓任何東西。原音照設計不上傳（見 renderReveal 那段的理由）。 -->
+    <!-- 揭曉也要看得到那條旋律、而且可以壓住從中間播（2026-08-17 Alvis 要的）。
+         跟猜的畫面是同一套操作，不用再學一次。 -->
+    <div id="revroll" style="display:none">
+      <div class="roll" id="wrapRev"><canvas id="cvRev" role="img"
+        aria-label="他唱的音高線（圖形，讀螢幕軟體讀不出旋律）"></canvas>
+        <div class="lbl">壓住畫面＝從那裡開始聽</div></div>
+    </div>
     <div class="row" id="revreplay" style="display:none">
-      <button class="btn" onclick="stopAll();playFrom(0)">▶ 再聽一次他唱的（樂器版）</button>
+      <button class="btn" onclick="stopAll();playFrom(0)">▶ 從頭聽一次（樂器版）</button>
       <button class="btn sm" onclick="stopAll()">■ 停</button>
     </div>
     <div class="row" id="revdl" style="display:none">
@@ -2122,6 +2134,8 @@ function toMake(){
   /* ⚠ 第一句話不要叫玩家做決定（2026-08-06 翻掉的預設）。
      「你要唱哪一首？」是要他回想；「挑一首你會唱的」是要他辨認。差十倍。 */
   $("makehead").textContent="挑一首你會唱的";
+  /* 只有在房間裡玩「歌詞不達意」時，麥克風才有開關這回事 */
+  $("mkMicOn").style.display=(mode==="room"&&isDiscord())?"":"none";
   $("mkWordLb").textContent="謎底——要讓對方猜的字（最多 6 個字）";
   $("mkWordTip").innerHTML="選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。";
   cardReset(); drawRail(); drawDone();
@@ -5016,7 +5030,15 @@ function renderRoom(){
      ⚠ 接不起來也不擋遊戲——那就退回去開 Discord，玩法完全一樣。 */
   if(isDiscord()){
     if(!voiceRoom&&voiceState==="off") voiceJoin(roomCode);
-    voiceMute(amPerformer());
+    /* ⚠ 2026-08-17 Alvis 定的：只有「開始唱之後」才關麥克風。
+       想歌那段（compose）大家都要能講話——他要跟大家哈啦、問「你們喜歡哪首」，
+       那是這個玩法好玩的一半。整輪都關掉的話，出題的人等於被丟到旁邊罰站。
+       ⚠ 代價講清楚：想歌的時候他講話是傳得出去的，自己要小心不要說出歌名。
+         挑歌畫面上有一行字在提醒他。 */
+    voiceMute(amPerformer()&&(st==="live"||st==="guess"));
+    /* 保險：只要不在唱的階段，一定要把「壓掉別人聲音」解除。
+       不然萬一放開按鈕那一刻剛好斷線／回合結束，他會整輪都聽不到人。 */
+    if(st!=="live"&&voiceDuck) voiceDuckAll(false);
   }else if(voiceRoom||voiceState!=="off"){
     /* 換到別的玩法（或房主改了模式）就把語音收掉——
        ⚠ 少了這一行，語音會一路跟著你進下一個房間。 */
@@ -5555,7 +5577,15 @@ async function renderReveal(){
     /* 揭曉可以重聽樂器版（2026-08-16 加）：聽的人手上本來就有整條旋律，
        出題的人自己那份在 cur 裡，補過去就一樣能重播。 */
     if((!curve||!curve.length)&&pz.by===myId&&typeof cur!=="undefined"&&cur&&cur.length) curve=cur;
-    $("revreplay").style.display=(curve&&curve.length)?"":"none";
+    const hasCurve=!!(curve&&curve.length);
+    $("revreplay").style.display=hasCurve?"":"none";
+    /* 旋律圖：畫出來、而且可以壓住從中間播 */
+    $("revroll").style.display=hasCurve?"":"none";
+    if(hasCurve){
+      wireRevWave();
+      /* ⚠ 要等這一區真的顯示出來才畫得出來——藏著的畫布寬度是 0，畫了也是空的 */
+      requestAnimationFrame(()=>drawRoll("cvRev",curve,{span:span()}));
+    }
   }
   else{ $("revreplay").style.display="none"; revealMix(); }
 }
@@ -5610,6 +5640,31 @@ function endLiveHold(){
   heldOn=false;
   const wr=$("wrapLive"); if(wr) wr.classList.remove("hold");
   stopAll(); drawRoll("cvLive",curve,{span:span()});
+}
+
+/* ---- 揭曉畫面的旋律圖：壓住＝從那裡聽（2026-08-17 Alvis 要的）----
+   跟上面搶答那條是同一套操作，只是畫在揭曉的畫布上。
+   ⚠ 不重用 cvLive：那塊在另一個區域，揭曉時是藏起來的，畫上去看不到。 */
+let revHeld=false;
+function wireRevWave(){
+  const cv=$("cvRev"), wr=$("wrapRev");
+  if(!cv||cv.dataset.wired) return; cv.dataset.wired="1";
+  const posT=e=>{const r=cv.getBoundingClientRect();
+    return Math.max(0,Math.min(1,(e.clientX-r.left-PADL)/(r.width-PADL-4)))*span();};
+  cv.addEventListener("pointerdown",e=>{
+    if(e.button===2) return;
+    e.preventDefault(); try{cv.setPointerCapture(e.pointerId);}catch(_){}
+    revHeld=true; wr.classList.add("hold");
+    if(!playFrom(posT(e))) endRevHold();
+  });
+  ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>cv.addEventListener(ev,endRevHold));
+  cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+}
+function endRevHold(){
+  if(!revHeld) return;
+  revHeld=false;
+  const wr=$("wrapRev"); if(wr) wr.classList.remove("hold");
+  stopAll(); drawRoll("cvRev",curve,{span:span()});
 }
 
 
@@ -6526,7 +6581,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817d";
+const BUILD="0817e";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
