@@ -121,6 +121,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .btn.go:hover{background:linear-gradient(168deg,#ffe19a,#ffc352 46%,var(--gold))}
 .btn.big{padding:17px 30px;font-size:17px}
 .btn.sm{padding:9px 16px;font-size:13.5px}
+/* ⚠ 小按鈕在桌機是 37px，滑鼠點沒問題；下面 640px 那段已經把手機加到 46.8px。
+      漏掉的是「螢幕很寬但用手指點」的機器——平板直放是 768px，
+      觸控筆電更寬，兩種都吃不到 640px 那條規則，手指還是只有 37px 可以點，
+      而齒輪裡放的是「離開房間」，點錯代價很大。
+      所以改用「這台是不是用手指點的」來判斷，不要用螢幕寬度猜。 */
+@media (pointer:coarse){
+  .btn.sm{padding:13px 17px;font-size:14.5px}
+}
 .btn.wide{width:100%}
 /* 箭頭要包在自己的小圓裡，不能光溜溜黏在字旁邊 */
 .btn .cir{
@@ -275,13 +283,29 @@ input[readonly]{font-size:13px;color:var(--dim)}
 .more > summary:hover{color:var(--gold)}
 .more .modes{padding:0 14px 14px;display:flex;flex-direction:column;gap:9px}
 
+/* 四格說明圖。
+   ⚠ 2026-08-17：圖上本來自己印著四句字幕，第二格印的是「賭一個人」——
+      那是舊玩法，現在是系統指定的，玩家沒得賭。整張圖是一個 JPEG，
+      字改不掉，所以改成「只顯示上面 70% 的插畫，字幕帶裁掉」，
+      四句話用底下真的 HTML 文字寫，我們自己控制。
+      順便解決兩件事：讀螢幕的人本來完全讀不到圖裡的字；
+      以後玩法再改，改一行文字就好，不用重畫圖。
+   ⚠ 285.714% = 200 ÷ 0.7。格子高度變成寬度的 0.7 倍，
+      圖要照原比例放大同樣倍數才不會被壓扁。
+      76.923% = 1 ÷ 1.3，這是「要看下面那一列」時 background-position 的算法
+      （偏移量 = 百分比 ×（格子高 − 圖高））。這兩個數字動一個就要一起重算。 */
 .comic4{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:2px 0 4px}
-.comic4 i{display:block;aspect-ratio:1/1;border-radius:10px;
-  background-image:var(--comic4);background-size:200% 200%;background-repeat:no-repeat}
-.comic4 i:nth-child(1){background-position:0 0}
-.comic4 i:nth-child(2){background-position:100% 0}
-.comic4 i:nth-child(3){background-position:0 100%}
-.comic4 i:nth-child(4){background-position:100% 100%}
+.comic4 i{display:block;border-radius:10px;overflow:hidden;background:#0c0a07}
+.comic4 i::before{content:"";display:block;aspect-ratio:10/7;
+  background-image:var(--comic4);background-size:200% 285.714%;background-repeat:no-repeat}
+.comic4 i:nth-child(1)::before{background-position:0 0}
+.comic4 i:nth-child(2)::before{background-position:100% 0}
+.comic4 i:nth-child(3)::before{background-position:0 76.923%}
+.comic4 i:nth-child(4)::before{background-position:100% 76.923%}
+/* ⚠ font-style:normal 不能拿掉。<i> 這個標籤瀏覽器預設就是斜體，
+      裡面的字會跟著斜掉，四句說明會整排歪的。 */
+.comic4 i b{display:block;padding:9px 8px 11px;text-align:center;font-style:normal;
+  font-size:14px;font-weight:700;line-height:1.35;color:var(--gold)}
 
 /* 房間的兩種玩法：整塊都可以按，選到的那塊亮起來 */
 .modes{display:flex;flex-direction:column;gap:9px}
@@ -567,6 +591,33 @@ input[readonly]{font-size:13px;color:var(--dim)}
 /* 謎底幾個字的空格子（2026-08-16 Alvis 要求要一眼看到） */
 .wblanks i{display:inline-block;width:26px;height:30px;border:2px dashed var(--gold);
   border-radius:7px;margin-right:5px;vertical-align:middle;opacity:.85}
+/* ===== 正在送出聲音：整個畫面變色（2026-08-17 Alvis 要的）=====
+   他的原話：「要有很明顯的變動，可能底色從黑色變成什麼顏色，
+   讓唱的人知道那些聲音他正在送出去」。
+   ⚠ 用金紅色而不是綠色：這是「正在錄／正在播送」，全世界的錄音鍵都是紅的。
+   ⚠ 邊框那圈呼吸燈刻意慢（1.6 秒），不是要嚇人，是要讓他餘光就看得到還在送。 */
+/* ⚠ 第一版把整個 body 的底色換成紅的，結果內容被染成一片霧、字讀不到——
+   那等於把好不容易修好的對比又弄壞。
+   改成「四周發紅、中間保持乾淨」：夠明顯，但不影響看畫面。（2026-08-17） */
+body.sending::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:79;
+  background:radial-gradient(115% 85% at 50% 50%,
+    rgba(255,60,30,0) 42%, rgba(255,60,30,.10) 68%, rgba(255,60,30,.34) 100%)}
+body.sending::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:80;
+  border:6px solid rgba(255,80,50,.9);
+  box-shadow:inset 0 0 34px rgba(255,80,50,.4);
+  animation:sendpulse 1.6s ease-in-out infinite}
+@keyframes sendpulse{0%,100%{opacity:.55}50%{opacity:1}}
+#sendtag{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:95;
+  display:none;align-items:center;gap:9px;padding:10px 18px;border-radius:999px;
+  background:rgba(200,50,30,.95);color:#fff;font-weight:700;font-size:15px;
+  box-shadow:0 8px 26px rgba(0,0,0,.5)}
+body.sending #sendtag{display:flex}
+#sendtag i{width:11px;height:11px;border-radius:50%;background:#fff;
+  animation:sendblink .9s steps(1,end) infinite}
+@keyframes sendblink{0%,49%{opacity:1}50%,100%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){
+  body.sending::after,#sendtag i{animation:none}
+}
 /* 大倒數（2026-08-17 Alvis 要的）：整個畫面上方置中，最後十秒變大變紅跳動。
    ⚠ 不能擋到底下的東西：pointer-events:none，而且只在有倒數的時候出現。 */
 #bigclock{position:fixed;top:12px;left:50%;transform:translateX(-50%);
@@ -657,12 +708,12 @@ input[readonly]{font-size:13px;color:var(--dim)}
 
   <div class="shell">
     <div class="core gold">
-      <!-- 四格圖用歌詞不達意這張（COMIC4）。
-           ⚠ 本來這裡放的是 COMIC，畫的是「錄好傳連結給朋友」那套——
-             首頁教一套、按鈕開的是另一套，新玩家對不起來。 -->
-      <div class="comic4" id="comic" role="img" aria-label="四格說明：一、輪到你出題時麥克風會關掉。二、你唱一段歌，電腦把歌詞洗掉只剩怪聲。三、朋友聽那串怪聲。四、他們打字猜你藏的是哪幾個字。"><i></i><i></i><i></i><i></i></div>
-      <p class="dim">輪到你出題，<b>你的麥克風會被關掉</b>——只能發出那串怪聲，
-        讓你<b>賭的那個人</b>先聽懂。其他時間大家可以自由聊、亂猜。</p>
+      <!-- ⚠ 2026-08-17：開房間和房號框一定要排在四格圖「前面」。
+           之前排在圖後面，桌機 1440×900 量出來「開一間房」在 y=932、
+           房號框在 y=1011——整個第一屏只看得到標題和一張大圖，
+           一顆按鈕都沒有，第一次進來的人會以為這頁只是介紹。
+           手機沒這個問題（圖窄很多），所以只在桌機上踩得到。
+           標題和上面那句話已經把遊戲講完了，圖是補充，排在按鈕後面就好。 -->
       <button class="btn go big wide" onclick="createRoom('discord',this)">
         開一間房 <span class="cir">＋</span></button>
       <!-- ⚠ 房號一定要用畫面上的框，不可以再用 prompt()——
@@ -675,6 +726,15 @@ input[readonly]{font-size:13px;color:var(--dim)}
                onkeydown="if(event.key==='Enter')joinRoom(this.value)">
         <button class="btn" onclick="joinRoom($('joincode').value,this)">加入</button>
       </div>
+      <!-- 四格圖用歌詞不達意這張（COMIC4）。
+           ⚠ 本來這裡放的是 COMIC，畫的是「錄好傳連結給朋友」那套——
+             首頁教一套、按鈕開的是另一套，新玩家對不起來。
+           ⚠ 圖上第二格印著「賭一個人」，那是舊玩法。現在是系統指定的，
+             圖裡的字改不了（整張是一個 JPEG），要重畫才會對。 -->
+      <div class="comic4" id="comic"><i><b>選一首歌</b></i><i><b>系統指定一個人</b></i><i><b>你唱出來只剩音高</b></i><i><b>他先猜到那幾個字</b></i></div>
+      <!-- ⚠ 不要再寫「賭的那個人」——2026-08-15 之後改成系統指定，玩家沒得選。 -->
+      <p class="dim">輪到你出題，<b>你的麥克風會被關掉</b>——只能發出那串怪聲。
+        每輪<b>系統會指定一個人</b>，想辦法讓他先聽懂；其他人也可以自由聊、偷猜。</p>
     </div>
   </div>
 
@@ -1153,7 +1213,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
     <details class="shell howdet" id="howBox" style="display:none">
       <summary><span class="eyebrow t"><i></i>怎麼玩</span><span class="tiny dim">點開看四格</span></summary>
       <div class="core">
-        <div class="comic4" id="comic4" role="img" aria-label="四格說明：一、輪到你出題時麥克風會關掉。二、你唱一段歌，電腦把歌詞洗掉只剩怪聲。三、朋友聽那串怪聲。四、他們打字猜你藏的是哪幾個字。"><i></i><i></i><i></i><i></i></div>
+        <div class="comic4" id="comic4"><i><b>選一首歌</b></i><i><b>系統指定一個人</b></i><i><b>你唱出來只剩音高</b></i><i><b>他先猜到那幾個字</b></i></div>
         <!-- 提醒集中放這裡。等人的時候最閒，一定會看；
              玩到一半的畫面在倒數，那時候丟字給他等於沒寫。
              ⚠ 靜音鍵是 2026-08-15 補的：iPhone 側邊那個實體鍵打開的話，
@@ -1182,16 +1242,17 @@ input[readonly]{font-size:13px;color:var(--dim)}
         <span class="tiny dim"><b id="modeNow">歌詞不達意</b>・點開可以換</span></summary>
       <div class="core">
         <div class="modes" id="modePick">
-          <button class="modebtn on" id="mdDiscord" onclick="pickMode('discord')">
+          <button class="modebtn on" id="mdDiscord" aria-pressed="true" onclick="pickMode('discord')">
             <b>歌詞不達意</b>
-            <span>網站裡就能講話。輪到你出題麥克風會被關掉，
-              只能用一串沒有字的怪聲，讓你賭的那個人先聽懂。</span>
+            <!-- ⚠ 不要再寫「賭」——2026-08-15 之後是系統指定的，不是玩家自己選。 -->
+            <span>網站裡就能講話。輪到你出題麥克風會被關掉，只能用一串沒有字的怪聲，
+              讓<b>系統指定的那個人</b>先聽懂。</span>
           </button>
-          <button class="modebtn" id="mdBuzz" onclick="pickMode('buzz')">
+          <button class="modebtn" id="mdBuzz" aria-pressed="false" onclick="pickMode('buzz')">
             <b>輪流出題，一起搶答</b>
             <span>一次一個人唱，其他人邊聽邊猜，越早猜中分數越高。</span>
           </button>
-          <button class="modebtn" id="mdRelay" onclick="pickMode('relay')">
+          <button class="modebtn" id="mdRelay" aria-pressed="false" onclick="pickMode('relay')">
             <b>一個傳一個</b>
             <span>每個人各出一題，同時開始。聽上一個人唱的、猜一個字，
               再用那個字自己挑一首歌唱給下一個人聽。傳一圈之後看它歪成什麼樣。</span>
@@ -1384,6 +1445,8 @@ input[readonly]{font-size:13px;color:var(--dim)}
      用 new Audio() 但不放進 DOM 的話 iOS Safari 常常整個不出聲。 -->
 <!-- 大倒數：唱／猜的那一分鐘裡固定浮在畫面上方 -->
 <div id="bigclock" aria-hidden="true"><b id="bigclocknum">60</b><i id="bigclocklbl">還可以猜</i></div>
+<!-- 正在送出聲音的標記，配合整個畫面變色 -->
+<div id="sendtag" role="status" aria-live="polite"><i></i>正在送出你的聲音…</div>
 
 <!-- ======== 設定（右上角齒輪）========
      2026-08-17 Alvis 要的：麥克風、每個人的音量這種「設定好就不會再碰」的東西
@@ -3210,9 +3273,17 @@ function renderCharPick(){
   const mine=(ps[myId]||{}).ch||"";
   const taken={};
   for(const k in ps) if(k!==myId&&ps[k].ch) taken[ps[k].ch]=(ps[k].name||"有人");
+  /* ⚠ 選到哪一隻不能只靠 class="on"（那只是顏色）。
+     用讀螢幕的人完全聽不到「已選取」，六顆按鈕聽起來一模一樣。
+     補 aria-pressed，切換的時候跟著改，不是只改 CSS。
+     被別人選走的那幾顆，畫面上顯示的是那個人的名字，
+     單獨唸出來會變成「小美 按鈕」不知所云，所以另外給一句完整的 aria-label。 */
   box.innerHTML=CHARS.map(c=>
     '<button class="chbtn'+(taken[c.id]?" taken":"")+(mine===c.id?" on":"")+'"'+
-    (taken[c.id]?" disabled":"")+' onclick="pickChar(\''+c.id+'\')">'+
+    (taken[c.id]?" disabled":"")+
+    ' aria-pressed="'+(mine===c.id?"true":"false")+'"'+
+    ' aria-label="'+(taken[c.id]?esc(c.nm)+"，已經被"+esc(taken[c.id])+"選走":esc(c.nm))+'"'+
+    ' onclick="pickChar(\''+c.id+'\')">'+
     charSVG(c.id,"front")+'<span>'+(taken[c.id]?esc(taken[c.id]):c.nm)+'</span></button>').join("");
 }
 
@@ -4810,6 +4881,12 @@ function closeSettings(){
 function toggleSettings(){
   $("setPanel").classList.contains("on")?closeSettings():openSettings();
 }
+/* 正在送出聲音＝整個畫面變色。
+   ⚠ 一定要保證關得掉：斷線、切分頁、時間到，任何一條路都要走到 sendingSkin(false)，
+     不然他會一直看到紅色，以為還在送。 */
+function sendingSkin(on){
+  document.body.classList.toggle("sending",!!on);
+}
 /* 離開房間要按兩次。
    ⚠ 不用瀏覽器內建的確認視窗——有些 App 內建瀏覽器會直接擋掉或丟錯（prompt 就踩過），
      而且那種視窗在手機上長得很醜。就地把按鈕變成「確定要離開？」最保險。 */
@@ -4943,10 +5020,16 @@ async function joinRoom(code,btn){
   const c=String(code||"").replace(/\D/g,"");
   if(c.length!==4){ alert("房號是四位數字。"); return; }
   busyBtn(b0,true,"進去中…");
-  myName=askName(); myId=newId(); isHost=false;
+  myId=newId(); isHost=false;
   Net=makeNet();
   try{
+    /* ⚠ 先確認房間真的在，才問名字。
+       反過來的話，房號打錯的人會先被問一次名字，答完才看到「找不到這個房間」——
+       白填一次，而且會懷疑名字是不是已經送出去了。
+       join() 兩種模式都只是查 createdAt 在不在、不寫任何東西，
+       所以中間停下來問名字是安全的。 */
     roomCode=await Net.join(c);
+    myName=askName();
     await Net.set("players/"+myId,{name:myName,score:0,at:Net.now()});
     setupPresence();
     enterRoom();
@@ -4970,7 +5053,7 @@ async function leaveRoom(){
      然後跟著你進下一個房間。收在最前面反而收不掉。 */
   try{ if(Net&&myId) await Net.set("players/"+myId,null); }catch(e){}
   roomOff(); if(Net) Net.leave();
-  voiceLeave(); letSleep(); hideClock(); showGear(false);
+  voiceLeave(); letSleep(); hideClock(); showGear(false); sendingSkin(false);
   Net=null; room=null; roomCode=null; isHost=false; mySeat=null;
   roomPlay="buzz"; relayTask=null; chainRun=null;
   for(const k in hopCurveCache) delete hopCurveCache[k];
@@ -5022,6 +5105,8 @@ function renderRoom(){
   const st=room.state||"lobby";
   /* 大倒數只在「唱／猜」那一分鐘出現，揭曉和大廳一定要收掉 */
   if(!(isDiscord()&&(st==="live"||st==="guess"))) hideClock();
+  /* 不在唱的階段就一定不能留著紅色畫面（時間到、被收掉、換一輪都算） */
+  if(st!=="live") sendingSkin(false);
   const list=playerList();
 
   handleLeavers(list);
@@ -5098,9 +5183,13 @@ function renderRoom(){
     /* 收合起來的時候，標題那行要講現在選的是哪一種，不然點開才知道 */
     $("modeNow").textContent=(md==="discord")?"歌詞不達意"
       :(md==="buzz")?"輪流出題，一起搶答":"一個傳一個";
-    $("mdDiscord").classList.toggle("on",md==="discord");
-    $("mdBuzz").classList.toggle("on",md==="buzz");
-    $("mdRelay").classList.toggle("on",md==="relay");
+    /* ⚠ 選中不能只有顏色。class="on" 讀螢幕的人聽不到，
+       三顆按鈕唸起來一樣，不知道現在玩的是哪一種。aria-pressed 要跟著一起改。 */
+    [["mdDiscord","discord"],["mdBuzz","buzz"],["mdRelay","relay"]].forEach(([id,v])=>{
+      const b=$(id); if(!b) return;
+      b.classList.toggle("on",md===v);
+      b.setAttribute("aria-pressed",md===v?"true":"false");
+    });
     $("mdDiscord").disabled=!isHost;
     $("mdBuzz").disabled=!isHost; $("mdRelay").disabled=!isHost;
     $("modeNote").style.display=isHost?"none":"";
@@ -5273,15 +5362,12 @@ async function setupLive(){
     liveReset(lv.take); lvSeg=-1;
     $("liveredo").style.display=(!dc&&lv.take>1)?"":"none";
   }
-  /* 歌詞不達意：他每按一次說話就是新的一段。
-     ⚠ 只清畫面和「收過哪些封包」的紀錄，絕對不要碰音訊——
-        上一段很可能還在播（緩衝 0.4 秒），liveAudioStop 會把它整段切掉。
-        讓它自己播完，等 done 進來時 liveAudioFinish 會收乾淨；
-        下一段的第一包到的時候 LV 是 null，會開一組新的、重新對時。 */
-  if(dc&&st==="live"&&(lv.u||0)!==lvSeg){
-    lvSeg=lv.u||0; lvSeen={}; lvCurve=[]; curve=null;
-    drawRoll("cvLive",[{t:0,m:null,v:0}],{span:1});
-  }
+  /* ⚠ 2026-08-17 拿掉「每按一次就清空」。
+     本來出題的人每按一次說話，聽的人這邊整條旋律圖就被清掉重來，
+     結果他唱第二次的時候，第一次那段在大家的畫面上直接消失。
+     現在整輪累積：一分鐘內他唱幾次，圖上就有幾段，接在同一條時間軸上。
+     （出題的人那邊也改成同一個時間基準 talkT0，兩邊才對得起來。）
+     整條清空只剩兩種情況：換 take（上面那段）或換一輪。 */
   if(st==="live"){
     if(!amPerformer()) liveFeed(lv.f);
     if(lv.done) liveAudioFinish();
@@ -5863,10 +5949,14 @@ function assignGo(){ toMake(); }
    ⚠ 清 live/f 不會切斷聲音——已經排進 Web Audio 的斜坡不會因為資料消失而取消。
      真正會切斷的只有 liveAudioStop。 */
 let talking=false, talkLock=false, talkSeg=0, talkTick2=null;
+/* 整輪共用的時間起點。一輪只設一次，唱幾次都接在同一條時間軸上 */
+let talkT0=0;
 
 async function talkBegin(){
   talkSeg=0; talking=false; talkLock=false;
   liveTake=(liveTake||0)+1; liveSent=0;
+  /* 一輪重來一次：這裡才清空，不是每按一次就清 */
+  talkT0=0; cur=[]; curve=null;
   lvStatsReset();
   await Net.set("live",null);
   await Net.set("puzzle",{
@@ -5960,13 +6050,19 @@ async function talkDown(){
   }
   const w=$("talkhid"); if(w) w.style.display="none";
   talking=true; setPtt(true);
+  sendingSkin(true);           // 畫面整個變色：他要一眼知道「現在正在送出去」
   voiceDuckAll(true);          // 唱的時候先聽不到大家（也避免被自己麥克風收回去）
-  talkSeg++;
-  cur=[]; liveSent=0; curve=null;
-  await Net.set("live/f",null);
-  await Net.set("live/u",talkSeg);
+  /* ⚠ 2026-08-17 大改：不再「每按一次就清空」。
+     本來每次按住說話都 cur=[]、清掉 live/f、換一個段落編號，
+     結果是唱第二次的時候，第一次那條旋律圖整個不見——
+     Alvis 的原話：「頻譜圖你以為要幹嘛用的，當然是看剛剛一分鐘內錄製的東西啊」。
+     現在整輪共用同一條時間軸（talkT0），一分鐘內唱幾次都接在後面，
+     圖上看得到整輪的全部內容，聽的人那邊也一樣不會被清掉。
+     ⚠ 時間基準一定要用「整輪的起點」，不能用每次按下去的時間，
+       不然第二段會從 0 秒開始畫，蓋在第一段上面。 */
+  if(!talkT0) talkT0=performance.now();
   await Net.set("live/done",false);
-  recording=true; recStart=performance.now();
+  recording=true; recStart=talkT0;
   monBegin();
   clearInterval(liveTimer);
   liveTimer=setInterval(livePush,liveChunk()*1000);
@@ -5975,6 +6071,7 @@ async function talkDown(){
 async function talkUp(){
   if(!talking) return;
   talking=false; recording=false; setPtt(false);
+  sendingSkin(false);          // 停止送出：畫面顏色收回去
   voiceDuckAll(false);         // 放開＝聽得到大家在討論，可以馬上補唱
   clearInterval(liveTimer); liveTimer=null;
   /* 最後幾格錄的時候還沒有「後面」可以比，現在補清，再連退掉的那幾格一起送 */
@@ -6581,7 +6678,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817e";
+const BUILD="0817g";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
