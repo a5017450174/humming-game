@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
@@ -74,6 +74,29 @@ h2{font-size:clamp(23px,5vw,31px);line-height:1.2;margin:0;font-weight:700;
 p{margin:0;line-height:1.85;color:#cfc6b7;font-size:15.5px}
 .dim{color:var(--dim);font-size:14.5px;line-height:1.8}
 .tiny{color:var(--faint);font-size:13px;line-height:1.75}
+/* 🔴 「這輪是唱給你聽的」——被指定的那個人一定要一眼看到。
+   2026-08-17 Alvis 要的。本來只有一行小灰字在句尾寫「← 就是你」，
+   混在說明字裡面根本不會被注意到，等於沒講。
+   ⚠ 只有「是你」的時候才出現。每個人都看得到一坨金色＝等於都不醒目。 */
+.youpick{
+  display:flex; align-items:flex-start; gap:12px;
+  margin:10px 0; padding:14px 18px; border-radius:16px;
+  background:linear-gradient(168deg,rgba(245,185,66,.17),rgba(245,185,66,.06));
+  border:1px solid rgba(255,222,150,.45);
+  color:var(--text); font-size:16px; font-weight:700; line-height:1.5; text-align:left;
+  box-shadow:0 10px 30px -18px rgba(245,185,66,.85);
+}
+.youpick b{color:var(--gold)}
+.youpick .sub{display:block;font-size:13px;font-weight:400;color:var(--dim);margin-top:4px}
+.youpick .dot{
+  width:10px;height:10px;border-radius:50%;flex:none;margin-top:7px;
+  background:var(--gold);box-shadow:0 0 12px var(--gold);
+  /* ⚠ 只跳四下就停。一直跳到天荒地老會變成干擾，看久了反而自動忽略 */
+  animation:pickPulse 1.7s ease-in-out 4;
+}
+@keyframes pickPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.55);opacity:.5}}
+/* ⚠ 有人把系統設定成「減少動態」是因為會頭暈，一定要尊重 */
+@media (prefers-reduced-motion:reduce){.youpick .dot{animation:none}}
 b{font-weight:700}
 .gold{color:var(--gold)}
 .stack{display:flex;flex-direction:column;gap:18px}
@@ -1278,6 +1301,11 @@ body.sending #sendtag{display:flex}
     <div class="shell">
       <div class="core">
         <div class="ready" id="waitWho">有人正在想歌…</div>
+        <!-- 🔴 被指定的人在這裡就要知道。這時候他沒事做，是最好的告知時機；
+             等開唱了他忙著聽、忙著打字，反而看不到。 -->
+        <div class="youpick" id="waitPick" style="display:none"><span class="dot"></span>
+          <span>這輪是<b>唱給你聽</b>的
+            <span class="sub">你第一個猜到分數最高；被別人搶先，出題的人就白唱了</span></span></div>
         <p class="dim" style="text-align:center">他唱完你就會聽到，先想想等一下要怎麼猜。</p>
       </div>
     </div>
@@ -3801,6 +3829,15 @@ function redraw(head){
   else if($("s-room").classList.contains("on")&&$("rmLive").style.display!=="none")
     /* 直播那塊曲線是邊收邊長的，音名方塊會一直閃，所以那裡不畫 */
     drawRoll("cvLive",curve,{span:span(),head,notes:false});
+  /* 🔴 揭曉的旋律圖。2026-08-17 補的，Alvis 抓到的：
+     「我點住頻譜圖，理論上要有那條播放線，這樣我才知道在播哪個位置」。
+     `0817e` 加了揭曉的旋律圖（cvRev）和壓住從中間播的功能，
+     **但忘了加進這裡**——結果壓下去有聲音、卻完全沒有線，
+     根本不知道播到哪，也就失去「壓住從這裡聽」的意義。
+     正好是上面那段註解警告過的同一件事：每加一個有波形的畫面都要補進來。
+     ⚠ 這裡曲線是完整的（整輪收完了），所以音名方塊照畫，不用像 cvLive 那樣關掉。 */
+  else if($("s-room").classList.contains("on")&&$("rmReveal").style.display!=="none")
+    drawRoll("cvRev",curve,{span:span(),head});
 }
 
 /* ============ 鋼琴捲軸 ============ */
@@ -5256,6 +5293,8 @@ function renderRoom(){
     $("rmWait").style.display="";
     const p=(room.players||{})[performerId()]||{};
     $("waitWho").textContent=(p.name||"有人")+" 正在想歌…";
+    /* 🔴 這輪指定給我＝現在就講，不要等開唱。 */
+    $("waitPick").style.display=(isDiscord()&&room.pick&&room.pick===myId)?"":"none";
   }
   else if(st==="live"||st==="guess"){
     if(amPerformer()){
@@ -5447,9 +5486,20 @@ async function setupLive(){
     const bp=(room.players||{})[room.pick]||{};
     const bw=(room.players||{})[pz.by]||{};
     $("livebet").style.display="";
-    /* ⚠ 不要再寫「X 賭 Y」——2026-08-15 之後是系統指定的，不是出題的人選的。 */
-    $("livebet").innerHTML=esc(bw.name||"他")+' 這輪要唱給 <b class="gold">'+esc(bp.name||"？")+
-      '</b> 聽'+(room.pick===myId?'　<b class="gold">← 就是你</b>':'');
+    /* ⚠ 不要再寫「X 賭 Y」——2026-08-15 之後是系統指定的，不是出題的人選的。
+       🔴 2026-08-17：是「我」的時候要換成醒目的框，不能只在句尾補一句「← 就是你」。
+          那行是 class="tiny" 的小灰字，混在說明裡根本不會被看到——
+          而這件事直接影響他的分數和出題那個人的分數，是這一輪最重要的資訊。 */
+    if(room.pick===myId){
+      $("livebet").className="youpick";
+      $("livebet").innerHTML='<span class="dot"></span><span>'+
+        esc(bw.name||"他")+'這輪是<b>唱給你聽</b>的'+
+        '<span class="sub">你第一個猜到分數最高；被別人搶先，他就白唱了</span></span>';
+    }else{
+      $("livebet").className="tiny";
+      $("livebet").innerHTML=esc(bw.name||"他")+' 這輪要唱給 <b class="gold">'+
+        esc(bp.name||"？")+'</b> 聽';
+    }
   }else $("livebet").style.display="none";
 
   /* 直播中不能倒帶（Alvis 選的：就是直播），確認後才開放重播 */
@@ -6742,7 +6792,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817h";
+const BUILD="0817i";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
