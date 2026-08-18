@@ -367,6 +367,20 @@ input[readonly]{font-size:13px;color:var(--dim)}
       圖要照原比例放大同樣倍數才不會被壓扁。
       76.923% = 1 ÷ 1.3，這是「要看下面那一列」時 background-position 的算法
       （偏移量 = 百分比 ×（格子高 − 圖高））。這兩個數字動一個就要一起重算。 */
+/* 題目卡上的歌路分類 */
+.cats{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+.cats button{
+  padding:7px 13px;border-radius:999px;font-size:13.5px;font-weight:600;
+  background:rgba(255,240,214,.05);border:1px solid var(--hair2);color:var(--dim);
+  transition:background .3s,border-color .3s,color .3s;
+}
+.cats button:hover{border-color:rgba(255,238,205,.28);color:var(--text)}
+.cats button.on{
+  background:linear-gradient(168deg,rgba(245,185,66,.22),rgba(245,185,66,.09));
+  border-color:rgba(255,222,150,.5);color:var(--gold);
+}
+/* ⚠ 手指點得到：這排在手機上很容易誤觸旁邊那顆 */
+@media (pointer:coarse){.cats button{padding:11px 15px;font-size:14.5px}}
 .comic4{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:2px 0 4px}
 .comic4 i{display:block;border-radius:10px;overflow:hidden;background:#0c0a07}
 .comic4 i::before{content:"";display:block;aspect-ratio:10/7;
@@ -662,6 +676,7 @@ input[readonly]{font-size:13px;color:var(--dim)}
   .scoreline .s{flex-basis:100%;text-align:left}
 }
 /* 謎底幾個字的空格子（2026-08-16 Alvis 要求要一眼看到） */
+.wblanks b.gap{display:inline-block;width:13px}
 .wblanks i{display:inline-block;width:26px;height:30px;border:2px dashed var(--gold);
   border-radius:7px;margin-right:5px;vertical-align:middle;opacity:.85}
 /* ===== 正在送出聲音：整個畫面變色（2026-08-17 Alvis 要的）=====
@@ -904,6 +919,13 @@ body.sending #sendtag{display:flex}
         <div class="eyebrow t"><i></i>題目卡</div>
         <span class="tiny" id="cardFace" style="letter-spacing:.14em">第 1 面</span>
       </div>
+      <!-- 🔴 挑一種歌路。2026-08-17 加的，Leo 提的方向：
+           這遊戲其實是「你有多懂這個人」，所以要能賭「他是哪個圈子的」。
+           ⚠ 這只是**第一層賭**（他認不認得這段旋律）。
+              第二層（他會不會想到我想的那個字）靠的是共同回憶，程式幫不上忙。 -->
+      <div class="cats" id="cardCats"></div>
+      <p class="tiny" id="cardCatTip" style="margin:6px 0 0">
+        挑一種<b>他可能會的</b>——這是你對他的第一個賭。</p>
       <div class="pick" id="cardList"></div>
       <div class="row" style="margin-top:11px">
         <button class="btn sm" id="cardPrev" onclick="cardGo(-1)">← 上一面</button>
@@ -1662,51 +1684,109 @@ window.FIRE_CFG={
 </script>
 <script>
 /* 歌名清單 —— 只有歌名，沒有歌詞。
-   程式會自己從這些歌名拆出「字」和「兩個字的詞」來當題目，
-   所以結構上不可能出現「這首歌裡沒有那個字」的錯誤。
-   想加歌就直接加到下面的陣列，存檔重新整理就生效。 */
-const SONGLIST=[
-/* --- 童謠 / 兒歌 --- */
-"小星星","兩隻老虎","小蜜蜂","火車快飛","造飛機","三輪車","妹妹背著洋娃娃",
-"魚兒魚兒水中游","娃娃國","大象","只要我長大","生日快樂","郊遊","拔蘿蔔",
-"母鴨帶小鴨","鄉下老鼠","媽媽的眼睛","虎姑婆","潑水歌","我的家","甜蜜的家庭",
-"泥娃娃","小毛驢","蜜蜂做工","捕魚歌","茉莉花","高山青","太湖船","送別",
-"蝴蝶","一隻鳥仔哮啾啾","白鷺鷥","丟丟銅仔","六月茉莉","天黑黑","康定情歌",
-/* --- 台語老歌 --- */
-"望春風","雨夜花","月夜愁","四季紅","補破網","燒肉粽","舊情綿綿","港都夜雨",
-"思慕的人","媽媽請你也保重","孤女的願望","安平追想曲","秋風夜雨","河邊春夢",
-"淡水暮色","素蘭小姐要出嫁","農村曲","青蚵嫂","心事誰人知","車站","家後",
-"空笑夢","愛拚才會贏","落雨聲","酒後的心聲","向前走","舞女","浪子回頭",
-"漂浪之女","一支小雨傘","孤單北半球",
-/* --- 華語經典 --- */
-"月亮代表我的心","甜蜜蜜","小城故事","我只在乎你","但願人長久","恰似你的溫柔",
-"你的眼神","讀你","橄欖樹","外婆的澎湖灣","童年","光陰的故事","戀曲1990",
-"明天會更好","一剪梅","千千闕歌","偏偏喜歡你","月半小夜曲","漫步人生路",
-"海闊天空","光輝歲月","真的愛你","吻別","一路上有你","心如刀割","愛如潮水",
-"過火","白月光","夢醒時分","滾滾紅塵","一場遊戲一場夢","我的未來不是夢",
-"大海","天天想你","朋友","花心","讓我歡喜讓我憂","心太軟","傷心太平洋",
-"對面的女孩看過來","一天到晚游泳的魚","最浪漫的事","味道","領悟",
-/* --- 華語流行 --- */
-"天黑黑","綠光","遇見","開始懂了","我不難過","雨天","第一天","天使",
-"七里香","告白氣球","稻香","青花瓷","晴天","簡單愛","可愛女人","龍捲風",
-"東風破","千里之外","菊花台","髮如雪","夜曲","楓","蒲公英的約定","彩虹",
-"說好的幸福呢","一路向北","星晴","擱淺","退後","算什麼男人","說愛你",
-"倒帶","日不落","舞孃","天空","看我七十二變","隱形的翅膀","歐若拉",
-"突然好想你","溫柔","憨人","倔強","志明與春嬌","戀愛ing","知足","乾杯",
-"小幸運","魔鬼中的天使","你就不要想起我","那些年","修煉愛情","江南","曹操",
-"她說","醉赤壁","可惜不是你","寧夏","勇氣","分手快樂","崇拜","下雨天",
-"童話","有沒有人告訴你","我願意","紅豆","匆匆那年","愛你","第一次愛的人",
-"曖昧","帶我走","只對你有感覺","你要的愛","找自己","普通朋友","就是愛你",
-"記得","聽海","剪愛","姐妹","三天三夜","小酒窩","不能說的秘密","晴天娃娃",
-"夜空中最亮的星","風繼續吹","冬天裡的一把火","冬季到台北來看雨","雨一直下",
-"愛我別走","說走就走","彎彎的月亮","夜來香","春天的花蕊","笑忘書","笑紅塵",
-"陽光宅男","月光","大城小愛","小情歌","小手拉大手","身騎白馬","魚",
-"聽媽媽的話","蝸牛","一顆蘋果","星空","雨下一整晚","水手","浪人情歌"
-];
+   ⚠ 2026-08-17 改成「程式讀得到的分類」。以前分類只寫在註解裡，程式讀不到。
+     SONGLIST 保留（所有分類攤平去重），原本用到它的地方都不用改。
 
-/* 經典歌名 —— 出題想不到要唱什麼的時候，畫面會從這裡隨機跳幾首給你當靈感。
-   這些同時也會併進上面的歌單，所以「歌名裡有這個字的歌」也會一起變多。
-   一樣只有歌名、沒有歌詞。 */
+   ⚠ 這份**不是答案清單**，只是「我可以哼什麼」的備忘錄。
+     謎底由出題的人自己寫，可以是歌詞、歌名，也可以是只有他們才懂的事
+     （Alvis 的例子：小星星 → 冰淇淋，因為放學時賣冰淇淋的推車在放）。
+
+   想加歌就加到對應的分類裡，存檔重新整理就生效。 */
+const SONGCAT={
+/* ---------- 華語流行（109 首） ---------- */
+"華語流行":[
+  "天黑黑","綠光","遇見","開始懂了","我不難過","雨天","第一天",
+  "天使","七里香","告白氣球","稻香","青花瓷","晴天","簡單愛",
+  "可愛女人","龍捲風","東風破","千里之外","菊花台","髮如雪","夜曲",
+  "楓","蒲公英的約定","彩虹","說好的幸福呢","一路向北","星晴","擱淺",
+  "退後","算什麼男人","說愛你","倒帶","日不落","舞孃","天空",
+  "看我七十二變","隱形的翅膀","歐若拉","突然好想你","溫柔","憨人","倔強",
+  "志明與春嬌","戀愛ing","知足","乾杯","小幸運","魔鬼中的天使","你就不要想起我",
+  "那些年","修煉愛情","江南","曹操","她說","醉赤壁","可惜不是你",
+  "寧夏","勇氣","分手快樂","崇拜","下雨天","童話","有沒有人告訴你",
+  "我願意","紅豆","匆匆那年","愛你","第一次愛的人","曖昧","帶我走",
+  "只對你有感覺","你要的愛","找自己","普通朋友","就是愛你","記得","聽海",
+  "剪愛","姐妹","三天三夜","小酒窩","不能說的秘密","晴天娃娃","夜空中最亮的星",
+  "風繼續吹","冬天裡的一把火","冬季到台北來看雨","雨一直下","愛我別走","說走就走","彎彎的月亮",
+  "夜來香","春天的花蕊","笑忘書","笑紅塵","陽光宅男","月光","大城小愛",
+  "小情歌","小手拉大手","身騎白馬","魚","聽媽媽的話","蝸牛","一顆蘋果",
+  "星空","雨下一整晚","水手","浪人情歌"
+],
+
+/* ---------- 華語經典（44 首） ---------- */
+"華語經典":[
+  "月亮代表我的心","甜蜜蜜","小城故事","我只在乎你","但願人長久","恰似你的溫柔","你的眼神",
+  "讀你","橄欖樹","外婆的澎湖灣","童年","光陰的故事","戀曲1990","明天會更好",
+  "一剪梅","千千闕歌","偏偏喜歡你","月半小夜曲","漫步人生路","海闊天空","光輝歲月",
+  "真的愛你","吻別","一路上有你","心如刀割","愛如潮水","過火","白月光",
+  "夢醒時分","滾滾紅塵","一場遊戲一場夢","我的未來不是夢","大海","天天想你","朋友",
+  "花心","讓我歡喜讓我憂","心太軟","傷心太平洋","對面的女孩看過來","一天到晚游泳的魚","最浪漫的事",
+  "味道","領悟"
+],
+
+/* ---------- 兒歌童謠（36 首） ---------- */
+"兒歌童謠":[
+  "小星星","兩隻老虎","小蜜蜂","火車快飛","造飛機","三輪車","妹妹背著洋娃娃",
+  "魚兒魚兒水中游","娃娃國","大象","只要我長大","生日快樂","郊遊","拔蘿蔔",
+  "母鴨帶小鴨","鄉下老鼠","媽媽的眼睛","虎姑婆","潑水歌","我的家","甜蜜的家庭",
+  "泥娃娃","小毛驢","蜜蜂做工","捕魚歌","茉莉花","高山青","太湖船",
+  "送別","蝴蝶","一隻鳥仔哮啾啾","白鷺鷥","丟丟銅仔","六月茉莉","天黑黑",
+  "康定情歌"
+],
+
+/* ---------- 台語（31 首） ---------- */
+"台語":[
+  "望春風","雨夜花","月夜愁","四季紅","補破網","燒肉粽","舊情綿綿",
+  "港都夜雨","思慕的人","媽媽請你也保重","孤女的願望","安平追想曲","秋風夜雨","河邊春夢",
+  "淡水暮色","素蘭小姐要出嫁","農村曲","青蚵嫂","心事誰人知","車站","家後",
+  "空笑夢","愛拚才會贏","落雨聲","酒後的心聲","向前走","舞女","浪子回頭",
+  "漂浪之女","一支小雨傘","孤單北半球"
+],
+
+/* ---------- 動漫日文（32 首） ---------- */
+"動漫日文":[
+  "殘酷天使的行動綱領","紅蓮華","炎","紅蓮之弓矢","青鳥","微笑爆彈","心漸漸被你吸引",
+  "Butter-Fly","Get Wild","Catch You Catch Me","God knows","Deja Vu","戀愛循環","心繪",
+  "永遠的翌日","情人節之吻","Easy Love","閃耀日常","心意綻放之際","在你身旁","好想大聲說愛你",
+  "早安","目標是寶可夢大師","空","深邃森林","We Are!","Just Communication","Get Over",
+  "Northern Lights","Secret of my heart","Rose","Last Piece"
+],
+
+/* ---------- K-pop（29 首） ---------- */
+"K-pop":[
+  "Not Shy","IDOL","Way Back Home","BREATHE","COME BACK HOME","DOWNPOUR","MAGIC SHOP",
+  "Tomorrow, Today","Travel","Friday","Gangnam Style","Gentleman","DDU-DU DDU-DU","Kill This Love",
+  "How You Like That","Boombayah","As If It's Your Last BLACKPINK","Pink Venom","Whistle","Ice Cream","Dynamite",
+  "Butter","Boy With Luv","DNA","Mic Drop","Fake Love","Blood Sweat & Tears","Money",
+  "Solo"
+],
+
+/* ---------- 西洋（21 首） ---------- */
+"西洋":[
+  "My Love","Love Story","Yesterday Once More","Lemon Tree","You Are The Reason","It's My Life","Just The Way You Are",
+  "Faded","As Long As You Love Me","What Makes You Beautiful One Direction","Someone Like You","Perfect","My Heart Will Go On","Baby",
+  "Chandelier","Call Me Maybe","In The End","Yellow","Bad Romance","I Ain't Worried","Left And Right"
+],
+
+/* ---------- 電玩（10 首） ---------- */
+"電玩":[
+  "超級瑪利歐兄弟","薩爾達傳說","動物森友會","王國之心","太空戰士","超時空之鑰","勇者鬥惡龍",
+  "俄羅斯方塊","精靈寶可夢","音速小子"
+],
+
+/* ---------- 網路迷因（23 首） ---------- */
+"網路迷因":[
+  "Roundabout","Astronomia","Ievan Polkka","Caramelldansen","Peanut Butter Jelly Time","In My Feelings","江南Style",
+  "小蘋果","Baby Shark","PPAP","Let It Go","海草舞","學貓叫","花園種花",
+  "黑桃A","烏梅子醬","孤勇者","熱愛105°c的你","芒種","好想你","想見你想見你想見你",
+  "如果可以","愛情你比我想的閣較偉大"
+],
+
+};
+const SONGLIST=[].concat.apply([],Object.keys(SONGCAT).map(k=>SONGCAT[k])).filter((v,i,a)=>a.indexOf(v)===i);
+/* 每一首屬於哪些分類（一首可能同時屬於好幾類） */
+const SONGTAG=(()=>{const m={};for(const k in SONGCAT)for(const s of SONGCAT[k])(m[s]=m[s]||[]).push(k);return m;})();
+
 const CLASSICS=[
 /* --- 時代曲 / 華語老歌 --- */
 "何日君再來","夜上海","玫瑰玫瑰我愛你","綠島小夜曲","不了情","今宵多珍重",
@@ -2024,10 +2104,30 @@ const MAG='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="c
 const CARDN=6;
 let cardPages=[], cardAt=0, cardSeen={};
 
+/* 現在選的歌路。空字串＝不限。 */
+let cardCat="";
 function cardPool(){
+  /* 選了某一種就只發那一種。
+     ⚠ CLASSICS 那 150 首目前還沒分類，所以只在「不限」的時候撈得到。
+        （2026-08-17 的狀態，之後要補標。） */
+  if(cardCat&&typeof SONGCAT!=="undefined"&&SONGCAT[cardCat]&&SONGCAT[cardCat].length)
+    return SONGCAT[cardCat].slice();
   const a=(typeof CLASSICS!=="undefined"&&CLASSICS.length)?CLASSICS.slice():[];
   if(typeof SONGLIST!=="undefined") for(const s of SONGLIST) if(a.indexOf(s)<0) a.push(s);
   return a.length?a:["望春風","小星星","月亮代表我的心"];
+}
+/* 畫那一排分類。數量少的（例如電玩只有 10 首）照樣列出來，
+   但後面標首數，玩家自己知道那一類比較薄。 */
+function drawCats(){
+  const box=$("cardCats"); if(!box||typeof SONGCAT==="undefined") return;
+  const ks=Object.keys(SONGCAT).filter(k=>SONGCAT[k]&&SONGCAT[k].length);
+  box.innerHTML='<button type="button" class="'+(cardCat?"":"on")+'" onclick="pickCat(\'\')">不限</button>'+
+    ks.map(k=>'<button type="button" class="'+(cardCat===k?"on":"")+'" onclick="pickCat('+
+      JSON.stringify(k).replace(/"/g,"&quot;")+')">'+esc(k)+'</button>').join("");
+}
+function pickCat(k){
+  cardCat=(cardCat===k)?"":k;    // 再點一次＝取消
+  cardReset(); drawCats();
 }
 
 /* 發一面新的。同一輪之內不重複，整包發完了才重新洗。 */
@@ -2049,6 +2149,31 @@ function cardDeal(){
 /* 從歌名裡挑一個字當謎底。
    ⚠ 虛字不能當謎底。判準是「單獨講出來對方聽不聽得懂」——「月光」可以，「的」不行。 */
 const THINCH="的了我你妳他她它是在不沒有和跟就都也還又而但卻把被讓給對從向往到過著呢嗎吧啊喔哦耶之其者所以於與及或很太最更再只才會要能可個們這那哪什麼怎為何誰上下中代表意來去得地做法起如若各每種樣些點麼";
+/* 🔴 英文歌名也要能出題、也要提示幾個字。2026-08-17 Alvis 定的。
+   本來 cardWord 只認中文（其他字元全丟掉），所以 Shape of You、Dynamite、APT.
+   這種歌名會產出**空字串**——補了西洋和 K-pop 的歌單也是一挑到就壞。
+   ⚠ 動漫歌反而沒事：漢字活得下來（紅蓮華、千本櫻、進擊的巨人）。 */
+const ENTHIN=new Set(["a","an","the","of","in","on","at","to","for","and","or","but",
+  "is","am","are","was","were","be","been","it","its","i","me","my","mine","you","your",
+  "he","she","him","her","we","us","our","they","them","that","this","with","as","by",
+  "so","if","do","dont","up","out","no","not","oh","ah","yeah","la","na"]);
+function enWords(x){
+  return String(x||"").toLowerCase().replace(/[^a-z0-9']+/g," ").trim().split(/\s+/).filter(Boolean);
+}
+/* 這個謎底算中文還是英文？兩種都有的話以中文為主（中文那套判定比較嚴，比較安全）。 */
+function isEnAnswer(x){
+  return !/[一-鿿]/.test(String(x||"")) && /[a-zA-Z]/.test(String(x||""));
+}
+/* 謎底長什麼形狀，畫格子用。
+   中文＝幾個字；英文＝每個單字各幾個字母（"Let It Go" → [3,2,2]）。 */
+function wordShape(t){
+  if(isEnAnswer(t)){
+    const w=enWords(t).map(x=>x.replace(/'/g,"").length).filter(n=>n>0);
+    return {en:true,words:w,n:w.length};
+  }
+  const n=[...String(t||"").replace(/\s+/g,"")].length;
+  return {en:false,words:[n],n:n};
+}
 /* 哪個字在整份歌單裡出現得最兇。算一次就好。 */
 let charHot=null;
 function charHotMap(){
@@ -2059,7 +2184,22 @@ function charHotMap(){
 }
 function cardWord(s){
   const t=String(s||"").replace(/[^一-鿿]/g,"");
-  if(!t) return "";
+  /* 沒有中文字＝英文歌名，改挑一個有份量的英文單字。
+     挑最長的非虛字：Shape of You → Shape、Rolling in the Deep → Rolling。
+     ⚠ 整首都是虛字的話（Let It Go）就退回整個歌名——
+       那種歌大家本來就是整句記的，只給一個 "Let" 反而莫名其妙。 */
+  if(!t){
+    /* ⚠ 不要在這裡組正規表示式，跳脫字元很容易被寫壞。
+       直接把歌名切成英數詞（保留原本的大小寫），挑最長的那個非虛字。
+       Shape of You → Shape、Rolling in the Deep → Rolling。
+       整首都是虛字的話（Let It Go）就退回整個歌名——
+       那種歌大家本來就是整句記的，只給一個 "Let" 反而莫名其妙。 */
+    const raw=String(s||"").match(/[A-Za-z0-9']+/g)||[];
+    if(!raw.length) return "";
+    const 有料=raw.filter(x=>!ENTHIN.has(x.toLowerCase())&&x.replace(/'/g,"").length>=3)
+                  .sort((x,y)=>y.length-x.length);
+    return 有料.length?有料[0]:String(s||"").trim();
+  }
   let ok=[];
   for(let i=0;i<t.length;i++) if(THINCH.indexOf(t[i])<0) ok.push(t[i]);
   if(!ok.length) ok=[t[t.length-1]];
@@ -2295,8 +2435,9 @@ function toMake(){
   /* 只有在房間裡玩「歌詞不達意」時，麥克風才有開關這回事 */
   $("mkMicOn").style.display=(mode==="room"&&isDiscord())?"":"none";
   $("mkWordLb").textContent="謎底——要讓對方猜的字（最多 6 個字）";
-  $("mkWordTip").innerHTML="選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。";
-  cardReset(); drawRail(); drawDone();
+  $("mkWordTip").innerHTML="可以是歌詞或歌名，<b>也可以是只有你們才懂的那件事</b>"+
+      "——這首歌讓你們想到什麼，就寫什麼。";
+  cardCat=""; cardReset(); drawCats(); drawRail(); drawDone();
   show("s-make");
 }
 function backToMake(){ mode="make"; toMake(); }
@@ -5620,21 +5761,32 @@ async function setupLive(){
   }
   if(st==="guess"&&lvCurve.length){ curve=lvCurve; }
 
-  const cn=CNUM[pz.len]||pz.len;
   /* 字數要一眼看到——畫空格子比一行小字有用（2026-08-16 Alvis 要求）。
-     格子數＝謎底字數，放在題目行最前面。 */
-  const blanks=pz.len?'<span class="wblanks">'+'<i></i>'.repeat(pz.len)+'</span>　':'';
+     🔴 2026-08-17：英文謎底也要提示。中文畫「幾個字」，
+        英文改畫「每個單字幾個字母」，中間空一格（Let It Go → ▢▢▢ ▢▢ ▢▢）。
+     ⚠ 形狀直接從 pz.target 算，不用另外存欄位——
+       判定本來就是在每個人自己的瀏覽器裡比對 pz.target，答案本來就在手上。 */
+  const shp=wordShape(pz.target||"");
+  const cn=shp.en?shp.n:(CNUM[shp.n]||shp.n);
+  const blanks=shp.words.length
+    ? '<span class="wblanks">'+shp.words.map(n=>'<i></i>'.repeat(n)).join('<b class="gap"></b>')+'</span>　'
+    : '';
+  const 講法=shp.en
+    ? (shp.n===1?'一個英文字（'+shp.words[0]+' 個字母）':cn+' 個英文字')
+    : cn+'個字';
   $("liveask").innerHTML=dc
-    ? blanks+'他藏的是<b class="gold">'+cn+'個字</b>。<br>'+
-      '<b>不是猜歌名</b>——是他藏在歌裡的那幾個字，可能來自歌名，也可能是歌詞裡的。'
-    : blanks+"謎底是哪"+cn+"個字？";
+    ? blanks+'他藏的是<b class="gold">'+講法+'</b>。<br>'+
+      '<b>不一定是歌名或歌詞</b>——也可能是這首歌讓你們想到的那件事。'
+    : blanks+"謎底是"+講法+"？";
   const inp=$("liveword");
   /* ⚠ 原本的長度是跟著謎底字數走的。關鍵字只有兩個字的話，
      輸入框會被限制成 4 個字——連英文答案都打不進去。 */
-  const maxl=dc?12:Math.max(4,pz.len+2);
+  /* ⚠ 英文答案比中文長很多（"Rolling in the Deep" 19 個字元），
+     框子太短會打不完，而且完全看不出是被限制住了。 */
+  const maxl=dc?(shp.en?32:12):Math.max(4,(pz.len||shp.n)+2);
   if(inp.maxLength!==maxl) inp.maxLength=maxl;
   /* 打字框裡也講一次幾個字，看畫面哪裡都躲不掉 */
-  const ph="打你猜的字（"+cn+"個字），Enter 送出";
+  const ph=shp.en?"打你猜的英文字，Enter 送出":("打你猜的字（"+cn+"個字），Enter 送出");
   if(inp.placeholder!==ph) inp.placeholder=ph;
 
   /* 他賭了誰，全場都看得到——被賭到的人自己也要知道 */
@@ -5760,6 +5912,21 @@ function sameWord(a,b){
   const x=normWord(a), y=normWord(b);
   if(!x||!y) return false;
   if(x===y) return true;
+  /* 🔴 英文謎底走另一套。中文那套是「數字元」，套到英文會很怪：
+     謎底 "shape"、猜的人打 "shape of you"（很自然的反應）——
+     字元算起來 10 個 vs 5+3，會被判成錯。
+     英文改成**照單字比**：猜的那串裡有出現謎底的所有單字（照順序）就算對。 */
+  if(isEnAnswer(b)){
+    const gw=enWords(a), aw=enWords(b);
+    if(!aw.length) return false;
+    for(let i=0;i+aw.length<=gw.length;i++){
+      let 全中=true;
+      for(let j=0;j<aw.length;j++) if(gw[i+j]!==aw[j]){ 全中=false; break; }
+      if(全中) return true;
+    }
+    /* 沒空格打成一整串也算（letitgo） */
+    return gw.join("").indexOf(aw.join(""))>=0;
+  }
   /* 「大老虎」「是老虎」也算對。
      ⚠ 單字一定要嚴格比——不然謎底「虎」會被「馬虎」「狐假虎威」誤判成對。 */
   const yn=[...y].length;
@@ -7081,7 +7248,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817k";
+const BUILD="0817m";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
