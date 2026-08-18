@@ -938,13 +938,16 @@ body.sending #sendtag{display:flex}
   <div class="shell" id="mkSongBox">
     <div class="core">
       <div class="stack tight">
-        <label class="lb" for="mkSong">你要唱的歌</label>
+        <!-- ⚠ 2026-08-17 改文案。本來寫「你要唱的歌／可以不填」，
+             Alvis 說會誤導：「大家會以為蝦我還要再填我要唱啥歌喔」。
+             這一欄的用意只有一個——**幫你把歌詞叫出來**。不想查就整欄跳過。 -->
+        <label class="lb" for="mkSong">需要看歌詞嗎？填歌名就幫你查</label>
         <div class="inrow">
-          <input type="text" id="mkSong" maxlength="30" autocomplete="off" placeholder="可以不填">
+          <input type="text" id="mkSong" maxlength="30" autocomplete="off" placeholder="不用查的話這欄跳過就好">
           <button class="btn" onclick="findLyrics($('mkSong').value)">
             搜尋歌詞 <span class="cir">⌕</span></button>
         </div>
-        <p class="tiny">歌詞會開在<b>旁邊一個獨立視窗</b>，方便你邊看邊想要挖哪個字。
+        <p class="tiny">歌詞會開在<b>旁邊一個獨立視窗</b>，方便你邊看邊想要挖哪句。
           遊戲不會存任何歌詞。</p>
       </div>
     </div>
@@ -953,8 +956,10 @@ body.sending #sendtag{display:flex}
   <div class="shell" id="mkWordBox">
     <div class="core">
       <div class="stack tight">
-        <label class="lb" for="mkWord" id="mkWordLb">謎底——要讓對方猜的字（最多 6 個字）</label>
-        <input type="text" id="mkWord" maxlength="6" autocomplete="off" placeholder="例如：春風">
+        <!-- ⚠ 2026-08-17 從 6 個字放寬到 12：謎底可能是一整句話。
+             猜的人那邊會看到有幾個字，所以長一點也不會不公平。 -->
+        <label class="lb" for="mkWord" id="mkWordLb">謎底——要讓對方猜的（最多 12 個字，可以是一整句）</label>
+        <input type="text" id="mkWord" maxlength="12" autocomplete="off" placeholder="例如：春風、to be continued">
         <p class="tiny" id="mkWordTip">選<b>單獨講出來對方聽得懂</b>的字。「春風」可以，「的」不行。</p>
       </div>
     </div>
@@ -1787,6 +1792,36 @@ const SONGLIST=[].concat.apply([],Object.keys(SONGCAT).map(k=>SONGCAT[k])).filte
 /* 每一首屬於哪些分類（一首可能同時屬於好幾類） */
 const SONGTAG=(()=>{const m={};for(const k in SONGCAT)for(const s of SONGCAT[k])(m[s]=m[s]||[]).push(k);return m;})();
 
+/* 🔴 迷因歌：大家都不知道歌名。2026-08-17 Alvis 講的：
+     「我根本忘記他叫啥，但他的公式就是 to be continued」。
+   所以題目卡上要秀**那個梗**，不是原曲名——寫 Roundabout 沒有人想得起旋律。
+   左邊是原曲名（揭曉的時候當資料用），右邊是大家腦中會冒出來的字。 */
+const MEMES={
+  "Roundabout":"to be continued",
+  "Astronomia":"棺材舞",
+  "Ievan Polkka":"蔥",
+  "Caramelldansen":"兔女郎舞",
+  "Peanut Butter Jelly Time":"跳舞香蕉",
+  "In My Feelings":"Kiki Challenge",
+  "江南Style":"騎馬舞",
+  "小蘋果":"廣場舞",
+  "Baby Shark":"鯊魚",
+  "PPAP":"鳳梨筆",
+  "Let It Go":"冰雪奇緣",
+  "海草舞":"海草",
+  "學貓叫":"喵喵喵",
+  "花園種花":"挖呀挖",
+  "黑桃A":"夜店",
+  "烏梅子醬":"李榮浩",
+  "孤勇者":"英雄聯盟",
+  "熱愛105°c的你":"105度",
+  "芒種":"古風",
+  "好想你":"朱主愛",
+  "想見你想見你想見你":"想見你",
+  "如果可以":"韋禮安",
+  "愛情你比我想的閣較偉大":"茄子蛋"
+};
+
 const CLASSICS=[
 /* --- 時代曲 / 華語老歌 --- */
 "何日君再來","夜上海","玫瑰玫瑰我愛你","綠島小夜曲","不了情","今宵多珍重",
@@ -2229,10 +2264,16 @@ function cardDraw(){
     /* 歌手和年份都只是幫忙想起旋律。沒有就不掛，不要留一個空位。 */
     const who=(typeof singerOf==="function")?singerOf(s):"";
     const yr=(typeof yearOf==="function")?yearOf(s):"";
-    const meta=[who,yr].filter(Boolean).join(" · ");
+    /* 🔴 迷因歌要秀「那個梗」，不是原曲名。2026-08-17 Alvis 講的：
+       「我根本忘記他叫啥，但他的公式就是 to be continued」。
+       卡片上寫 Roundabout、Astronomia，沒有人想得起那是什麼旋律。
+       所以大字改秀梗，原曲名退到下面那行當註記。 */
+    const 梗=(typeof MEMES!=="undefined"&&MEMES[s])?MEMES[s]:"";
+    const 大字=梗||s;
+    const meta=(梗?[s]:[]).concat([who,yr]).filter(Boolean).join(" · ");
     return '<button type="button" class="it" onclick="cardPick('+j+',this)">'+
       '<span class="no">'+(i+1)+'</span>'+
-      '<span class="sn">'+esc(s)+'</span>'+
+      '<span class="sn">'+esc(大字)+'</span>'+
       '<span class="mt">'+esc(meta)+'</span></button>';
   }).join("");
   const f=$("cardFace"); if(f) f.textContent="第 "+(cardAt+1)+" 面";
@@ -2243,7 +2284,11 @@ function cardDraw(){
    謎底欄就在下面，不滿意可以直接改。 */
 function cardPick(s,el){
   $("mkSong").value=s;
-  $("mkWord").value=cardWord(s);
+  /* 🔴 迷因歌的預設謎底＝那個梗，不是從歌名挑字。
+     Roundabout 挑出來會是「Roundabout」，但沒有人會猜那個——
+     大家腦中冒出來的是「to be continued」。 */
+  const 梗=(typeof MEMES!=="undefined"&&MEMES[s])?MEMES[s]:"";
+  $("mkWord").value=梗||cardWord(s);
   const box=$("cardList");
   if(box) for(let i=0;i<box.children.length;i++) box.children[i].classList.remove("on");
   if(el) el.classList.add("on");
@@ -2434,7 +2479,7 @@ function toMake(){
   $("makehead").textContent="挑一首你會唱的";
   /* 只有在房間裡玩「歌詞不達意」時，麥克風才有開關這回事 */
   $("mkMicOn").style.display=(mode==="room"&&isDiscord())?"":"none";
-  $("mkWordLb").textContent="謎底——要讓對方猜的字（最多 6 個字）";
+  $("mkWordLb").textContent="謎底——要讓對方猜的（最多 12 個字，可以是一整句）";
   $("mkWordTip").innerHTML="可以是歌詞或歌名，<b>也可以是只有你們才懂的那件事</b>"+
       "——這首歌讓你們想到什麼，就寫什麼。";
   cardCat=""; cardReset(); drawCats(); drawRail(); drawDone();
@@ -2943,7 +2988,7 @@ async function loadFromHash(){
    Alvis 說先不要。讀連結 #q= 的路完全沒動，要救回來就是把那個輸入框加回去。 */
 
 /* ============ 猜 ============ */
-const CNUM=["","一","兩","三","四","五","六","七","八"];
+const CNUM=["","一","兩","三","四","五","六","七","八","九","十","十一","十二"];
 function startGuessing(){ ensureAC(); qIdx=0; loadQ(0); }
 function loadQ(i){
   stopAll(); endHold();
@@ -5783,7 +5828,9 @@ async function setupLive(){
      輸入框會被限制成 4 個字——連英文答案都打不進去。 */
   /* ⚠ 英文答案比中文長很多（"Rolling in the Deep" 19 個字元），
      框子太短會打不完，而且完全看不出是被限制住了。 */
-  const maxl=dc?(shp.en?32:12):Math.max(4,(pz.len||shp.n)+2);
+  /* ⚠ 謎底放寬到 12 個字之後，猜的框也要跟著放寬，不然打不完。
+     中文 12 字＋一點餘裕；英文本來就長，給 32。 */
+  const maxl=dc?(shp.en?32:16):Math.max(4,(pz.len||shp.n)+2);
   if(inp.maxLength!==maxl) inp.maxLength=maxl;
   /* 打字框裡也講一次幾個字，看畫面哪裡都躲不掉 */
   const ph=shp.en?"打你猜的英文字，Enter 送出":("打你猜的字（"+cn+"個字），Enter 送出");
@@ -7248,7 +7295,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817m";
+const BUILD="0817p";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
