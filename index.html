@@ -245,21 +245,32 @@ input[readonly]{font-size:13px;color:var(--dim)}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---------- 演唱模式（長按進入，之後點哪裡都是打拍子） ---------- */
-.singing{position:fixed;left:0;right:0;bottom:0;z-index:40;
-  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
-  background:linear-gradient(180deg,rgba(12,9,6,.86),rgba(12,9,6,.98));
-  border-top:1px solid rgba(245,185,66,.35);
-  display:none;flex-direction:column;gap:7px;align-items:center}
+/* ⚠ 這一條是「懸浮」的：不管畫面怎麼捲，它永遠釘在螢幕最下面。
+   Alvis 2026-08-19：「終止唱歌的按鈕要明顯一點，直接懸浮在下方，
+   不管你怎麼滑動他都懸浮在一個地方」。
+   position:fixed 就是在做這件事，但原本太素看不出來，所以加了陰影和外框。 */
+.singing{position:fixed;left:0;right:0;bottom:0;z-index:60;
+  padding:12px 14px calc(14px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,rgba(14,10,6,.94),rgba(10,7,4,.99));
+  border-top:2px solid rgba(245,185,66,.55);
+  box-shadow:0 -14px 34px rgba(0,0,0,.6),0 -2px 0 rgba(245,185,66,.18);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:none;flex-direction:column;gap:9px;align-items:center}
 .singing.on{display:flex}
-.singing .hint{font-size:12.5px;color:var(--faint);text-align:center;margin:0}
-/* 「唱完了」：要長按，所以要看得到進度，不然玩家不知道要按多久 */
-.doneBtn{position:relative;overflow:hidden;width:100%;max-width:420px;
-  padding:14px 0;border-radius:16px;border:1px solid rgba(245,185,66,.5);
-  background:rgba(0,0,0,.35);color:var(--gold);font-size:16px;font-weight:700;
-  letter-spacing:.05em;cursor:pointer;-webkit-user-select:none;user-select:none;
-  touch-action:none}
+/* 進了演唱模式，畫面底部要多留空間，不然內容會被那條蓋住 */
+body.singing-on{padding-bottom:150px}
+.singing .hint{font-size:13px;color:var(--gold);text-align:center;margin:0;
+  letter-spacing:.03em;opacity:.9}
+/* 「唱完了」：要長按，所以要看得到進度條，不然玩家不知道要按多久 */
+.doneBtn{position:relative;overflow:hidden;width:100%;max-width:460px;
+  padding:18px 0;border-radius:18px;border:2px solid rgba(245,185,66,.75);
+  background:rgba(38,26,10,.9);color:var(--gold);font-size:18px;font-weight:800;
+  letter-spacing:.08em;cursor:pointer;-webkit-user-select:none;user-select:none;
+  touch-action:none;box-shadow:0 3px 0 rgba(0,0,0,.5),0 0 22px rgba(245,185,66,.18)}
+.doneBtn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.5)}
 .doneBtn i{position:absolute;left:0;top:0;bottom:0;width:0%;
-  background:rgba(245,185,66,.28);transition:width .05s linear;pointer-events:none}
+  background:linear-gradient(90deg,rgba(245,185,66,.45),rgba(245,185,66,.3));
+  transition:width .05s linear;pointer-events:none}
 .doneBtn span{position:relative}
 /* 打一下的視覺回饋：整條旋律圖閃一下金色 */
 .snapflash{box-shadow:0 0 0 3px rgba(245,185,66,.75),0 0 26px rgba(245,185,66,.5)!important}
@@ -1280,13 +1291,6 @@ body.sending #sendtag{display:flex}
   <p class="tiny dim" id="tkDuck" style="text-align:center;margin:6px 0 0">
     現在聽得到大家在討論——聽完可以再按住補唱一次</p>
 
-  <!-- 演唱模式的底部條。⚠ 這一條 data-nosnap，點它不算打拍子——
-       不然每次想結束都會先多打一下（長按跟點擊共用同一個「手指按下去」）。 -->
-  <div class="singing" id="singBar" data-nosnap>
-    <p class="hint" id="singHint">點畫面任何地方＝打一下拍子</p>
-    <button class="doneBtn" id="singDone" data-nosnap><i></i><span>長按這裡結束</span></button>
-  </div>
-
   <p class="warn" id="talkhid" style="display:none">
     <b>剛剛切走了，那一段沒送出去。</b>要發出聲音的時候，這個視窗必須看得到——
     瀏覽器會把背景分頁凍住，你按著也錄不到東西。
@@ -2127,6 +2131,19 @@ const YEARS={
 function yearOf(song){ return YEARS[song]||""; }
 
 </script>
+<!-- ⚠⚠ 這一條一定要放在所有畫面「外面」，不能放在 #s-talk 裡面。
+     position:fixed 只有在「沒有任何祖先有 transform/filter」的時候才會釘在螢幕上。
+     畫面切換的動畫給 .screen 加了 transform，所以放在裡面的話，
+     它會釘在那個畫面的底部、不是螢幕底部——實測差了 642px。
+     （2026-08-19 踩到的。這是 position:fixed 最經典的陷阱。） -->
+<!-- 演唱模式的底部條。⚠ 這一條 data-nosnap，點它不算打拍子——
+       不然每次想結束都會先多打一下（長按跟點擊共用同一個「手指按下去」）。 -->
+  <div class="singing" id="singBar" data-nosnap>
+    <p class="hint" id="singHint">點畫面任何地方＝打一下拍子</p>
+    <button class="doneBtn" id="singDone" data-nosnap><i></i><span>長按結束</span></button>
+  </div>
+
+
 <script>
 "use strict";
 
@@ -3380,10 +3397,18 @@ function stopAll(){
      LV 沒有這個問題：下一批資料進來 liveAudioAppend 會自己重開一組。 */
   try{ liveAudioStop(); }catch(e){}
   stopSynth();
+  stopSnaps();        // 拍子也要停，不然旋律停了拍子還在響
   if(mixSrc){ try{ mixSrc.s.stop(); }catch(e){} try{ mixSrc.g.disconnect(); }catch(e){} mixSrc=null; }
   if(window.__raw){ try{window.__raw.pause();}catch(e){} }
   if(rawFaceRAF){ cancelAnimationFrame(rawFaceRAF); rawFaceRAF=null; }
   setFace(0);
+}
+/* 現在畫面上這條旋律，配的是哪一組拍子。
+   ⚠ 唱的人看自己錄的（snapAt），聽的人看收到的（lvSnaps）。 */
+function snapsNow(){
+  if(typeof lvCurve!=="undefined"&&curve===lvCurve&&lvSnaps.length) return lvSnaps;
+  if(typeof cur!=="undefined"&&curve===cur&&snapAt.length) return snapAt;
+  return lvSnaps.length?lvSnaps:snapAt;
 }
 function playFrom(t,at){
   ensureAC();
@@ -3394,6 +3419,14 @@ function playFrom(t,at){
   if(!v) return false;
   voices.push(v);
   nowPlaying={from:t,at:t0};
+  /* ⚠ 重播也要有拍子（2026-08-19 Alvis 抓到我漏掉的）。
+     本來只做了「即時聽到」，按「再聽一次」或壓住波形重聽的時候拍子全不見。
+     放在 playFrom 裡 ＝ 所有重播路徑（按鈕、壓波形、揭曉、一路播下來）通通有。
+     時間一樣是絕對排程，關係不會跑掉。 */
+  for(const st of snapsNow()){
+    if(st<t-0.02) continue;                  // 已經過去的那幾拍不補播
+    playSnap(t0+(st-t));
+  }
   if(!headRAF) headRAF=requestAnimationFrame(headLoop);
   return true;
 }
@@ -6699,7 +6732,7 @@ function setPtt(on){
   const t=b.querySelector("span");
   /* firstChild 現在是進度條那個 <i>，文字要找純文字節點 */
   for(const nd of b.childNodes) if(nd.nodeType===3&&nd.nodeValue.trim()){
-    nd.nodeValue=talkMode?"演唱中":"長按 1.5 秒開始唱"; break; }
+    nd.nodeValue=talkMode?"演唱中":"長按 1 秒開始唱"; break; }
   if(t) t.textContent=talkMode?"點畫面打拍子，長按下面那條結束":"進去之後，點畫面任何地方就是打拍子";
 }
 
@@ -6708,7 +6741,7 @@ function setPtt(on){
    聲音就一直開著關不掉。 */
 /* ============ 演唱模式（2026-08-19 Alvis 改的互動）============
    舊的：按住才說話，放開就停。手被佔住 → 沒有第二根手指可以打拍子。
-   新的：**長按 1.5 秒進入演唱模式** → 之後點畫面任何地方都是打一下拍子
+   新的：**長按 1 秒進入演唱模式** → 之後點畫面任何地方都是打一下拍子
         → **長按底部那條結束**。
 
    ⚠ 為什麼退出要用底部那一條，不是「畫面任何地方長按」：
@@ -6719,7 +6752,7 @@ function setPtt(on){
 
    ⚠ 聊天室不算節奏板。唱的人看不到大家講話（模式裡聽不到語音），
    **聊天室是他唯一知道大家在猜什麼的管道**，一定要能正常捲動和點選。 */
-const HOLD_MS=1500;
+const HOLD_MS=1000;   // Alvis 2026-08-19：1.5 秒太長
 let talkMode=false, holdTimer=null, holdRAF=null;
 
 function holdBar(el,pct){
@@ -6747,6 +6780,7 @@ function enterTalkMode(){
   snapAt=[]; snapSent=0;
   talkDown();
   const bar=$("singBar"); if(bar) bar.classList.add("on");
+  document.body.classList.add("singing-on");   // 底部留白，內容才不會被那條蓋住
   setPtt(true);
   try{ if(navigator.vibrate) navigator.vibrate([18,40,18]); }catch(e){}
 }
@@ -6755,6 +6789,7 @@ function exitTalkMode(){
   talkMode=false; talkLock=false;
   talkUp();
   const bar=$("singBar"); if(bar) bar.classList.remove("on");
+  document.body.classList.remove("singing-on");
   setPtt(false);
   try{ if(navigator.vibrate) navigator.vibrate(25); }catch(e){}
 }
@@ -6982,6 +7017,13 @@ function loadSnap(){
   return snapLoading;
 }
 /* 在指定時間播一下。at 省略就是馬上。 */
+let snapNodes=[];
+/* ⚠ 排進去的拍子一定要記下來，不然按「停」只停得掉旋律，拍子會繼續響完。
+   （2026-08-17 才因為「聲音關不掉」大修過一次，同一類問題。） */
+function stopSnaps(){
+  for(const n of snapNodes){ try{ n.stop(); }catch(e){} try{ n.disconnect(); }catch(e){} }
+  snapNodes=[];
+}
 function playSnap(at){
   ensureAC();
   if(!SNAP_BUF){ loadSnap(); return; }        // 還沒解好就先跳過，下一下就有了
@@ -6989,6 +7031,8 @@ function playSnap(at){
     const src=AC.createBufferSource(); src.buffer=SNAP_BUF;
     const g=AC.createGain(); g.gain.value=0.95;
     src.connect(g); g.connect(AC.destination);
+    snapNodes.push(src);
+    src.onended=()=>{ const i=snapNodes.indexOf(src); if(i>=0) snapNodes.splice(i,1); };
     /* ⚠ 一定要用絕對時間排程，不能用 setTimeout。
        查證過（Chris Wilson「A Tale of Two Clocks」）：setTimeout／setInterval 是
        「盡力而為」的，每一拍都會累積誤差，幾分鐘就飄掉。
@@ -7603,7 +7647,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0819a";
+const BUILD="0819b";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
