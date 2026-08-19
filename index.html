@@ -4330,6 +4330,12 @@ function drawRoll(id,c,opt){
   /* 節奏刻度：唱的人打的每一下。
      ⚠ 時間直接吃跟聲音同一組數字（不是另外做動畫）——
      查證過的作法：畫面要從同一份排程算，不然聽到的跟看到的會分家。 */
+  /* ⚠ 2026-08-19 Alvis 抓到：重播有聲音但畫面沒刻度。
+     聲音我做在唯一入口(playFrom)，畫面卻只改了兩個呼叫點——沒有舉一反三。
+     改成「沒指定就自己去拿」，所有畫面（猜、揭曉、結算）一次全有。 */
+  if(opt.snaps===undefined&&typeof snapsNow==="function"){
+    try{ opt.snaps=snapsNow(); }catch(e){}
+  }
   if(opt.snaps&&opt.snaps.length){
     g.save();
     for(const st of opt.snaps){
@@ -6892,8 +6898,24 @@ async function talkDown(){
      ⚠ 時間基準一定要用「整輪的起點」，不能用每次按下去的時間，
        不然第二段會從 0 秒開始畫，蓋在第一段上面。 */
   if(!talkT0) talkT0=performance.now();
+  /* ⚠⚠ 2026-08-19 修：中間聊天的那段空白不要補送。
+     Alvis 回報「第二次唱大家聽不到」，查出來的原因：
+
+     整輪共用一條時間軸（talkT0），所以第二次開唱時 liveSent 還停在第一段的結尾。
+     livePush 會從那裡一路打包到現在——**中間聊天那幾十秒的空白也一起包進去**。
+     一包的長度上限是 4000 字元（Firebase 規則），**聊超過約 24 秒就爆掉**，
+     然後**被規則靜靜擋掉，沒有任何錯誤訊息**。
+     實測：3307 字元→200 進得去、4960 字元→401 被擋。
+     而一輪 60 秒，討論 25～30 秒完全正常，所以幾乎一定會中。
+
+     那段空白本來就沒有人需要（聽的人那邊每一格自己帶時間戳，中間沒資料就是沒聲音）。
+     所以直接把進度推到「現在」，只送真的有唱的部分。 */
   await Net.set("live/done",false);
   recording=true; recStart=talkT0;
+  {
+    const 現在格=Math.floor((performance.now()-talkT0)/1000*LIVE_FPS);
+    if(現在格>liveSent) liveSent=現在格;
+  }
   monBegin();
   clearInterval(liveTimer);
   liveTimer=setInterval(livePush,liveChunk()*1000);
@@ -7065,6 +7087,11 @@ function livePush(final){
   const last=cur[cur.length-1-back]; if(!last) return;
   const nowIdx=Math.floor(last.t*LIVE_FPS)+1;
   if(nowIdx<=liveSent) return;
+  /* ⚠ 保險：不管什麼原因（分頁被凍住、系統卡頓），都不讓一包超過長度上限。
+     超過的話 Firebase 會直接擋掉**整包**，那比丟掉最舊的幾格慘得多。
+     4000 是規則的上限，抓 3600 留餘裕（base64 大約是位元組數的 4/3）。 */
+  const 最多幾格=Math.floor(3600*3/4/2);
+  if(nowIdx-liveSent>最多幾格) liveSent=nowIdx-最多幾格;
   const bytes=packChunk(cur,liveSent,nowIdx);
   const from=liveSent;
   liveSent=nowIdx;
@@ -7647,7 +7674,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0819b";
+const BUILD="0819c";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
