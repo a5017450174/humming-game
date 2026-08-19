@@ -244,6 +244,30 @@ input[readonly]{font-size:13px;color:var(--dim)}
 .qcard .sg{flex:1;text-align:right;color:var(--faint);font-size:13px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* ---------- 演唱模式（長按進入，之後點哪裡都是打拍子） ---------- */
+.singing{position:fixed;left:0;right:0;bottom:0;z-index:40;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,rgba(12,9,6,.86),rgba(12,9,6,.98));
+  border-top:1px solid rgba(245,185,66,.35);
+  display:none;flex-direction:column;gap:7px;align-items:center}
+.singing.on{display:flex}
+.singing .hint{font-size:12.5px;color:var(--faint);text-align:center;margin:0}
+/* 「唱完了」：要長按，所以要看得到進度，不然玩家不知道要按多久 */
+.doneBtn{position:relative;overflow:hidden;width:100%;max-width:420px;
+  padding:14px 0;border-radius:16px;border:1px solid rgba(245,185,66,.5);
+  background:rgba(0,0,0,.35);color:var(--gold);font-size:16px;font-weight:700;
+  letter-spacing:.05em;cursor:pointer;-webkit-user-select:none;user-select:none;
+  touch-action:none}
+.doneBtn i{position:absolute;left:0;top:0;bottom:0;width:0%;
+  background:rgba(245,185,66,.28);transition:width .05s linear;pointer-events:none}
+.doneBtn span{position:relative}
+/* 打一下的視覺回饋：整條旋律圖閃一下金色 */
+.snapflash{box-shadow:0 0 0 3px rgba(245,185,66,.75),0 0 26px rgba(245,185,66,.5)!important}
+/* 進入模式的長按進度，長在按鈕上 */
+.ptt i.hold{position:absolute;left:0;top:0;bottom:0;width:0%;
+  background:rgba(245,185,66,.3);transition:width .05s linear;pointer-events:none}
+.ptt{position:relative;overflow:hidden}
+
 /* ---------- 題目小卡（一面六首，挑一首你會唱的） ---------- */
 .pick{display:flex;flex-direction:column;gap:7px}
 .pick .it{display:flex;align-items:baseline;gap:11px;width:100%;text-align:left;
@@ -1256,6 +1280,13 @@ body.sending #sendtag{display:flex}
   <p class="tiny dim" id="tkDuck" style="text-align:center;margin:6px 0 0">
     現在聽得到大家在討論——聽完可以再按住補唱一次</p>
 
+  <!-- 演唱模式的底部條。⚠ 這一條 data-nosnap，點它不算打拍子——
+       不然每次想結束都會先多打一下（長按跟點擊共用同一個「手指按下去」）。 -->
+  <div class="singing" id="singBar" data-nosnap>
+    <p class="hint" id="singHint">點畫面任何地方＝打一下拍子</p>
+    <button class="doneBtn" id="singDone" data-nosnap><i></i><span>長按這裡結束</span></button>
+  </div>
+
   <p class="warn" id="talkhid" style="display:none">
     <b>剛剛切走了，那一段沒送出去。</b>要發出聲音的時候，這個視窗必須看得到——
     瀏覽器會把背景分頁凍住，你按著也錄不到東西。
@@ -1270,7 +1301,7 @@ body.sending #sendtag{display:flex}
   <div class="shell">
     <div class="core pad-s">
       <div class="eyebrow t"><i></i>大家在猜</div>
-      <div class="chat" id="tkChat"></div>
+      <div class="chat" id="tkChat" data-nosnap></div>
     </div>
   </div>
 
@@ -1776,15 +1807,30 @@ const SONGCAT={
 /* ---------- 電玩（10 首） ---------- */
 "電玩":[
   "超級瑪利歐兄弟","薩爾達傳說","動物森友會","王國之心","太空戰士","超時空之鑰","勇者鬥惡龍",
-  "俄羅斯方塊","精靈寶可夢","音速小子"
+  "俄羅斯方塊","精靈寶可夢","音速小子",
+  "Among Us","Minecraft","傳說之下","太鼓達人","節奏天國"
 ],
 
-/* ---------- 網路迷因（23 首） ---------- */
+/* ---------- 網路迷因（63 首） ----------
+   ⚠ 這一類跟別類不一樣：**選它的人要的是「大家都聽過但講不出名字」的旋律**。
+   所以判準是「哼出來會有人反應」，不是「這首歌紅不紅」。
+   下面 MEMES 那張表要一起維護——沒有梗的名字，題目卡上秀出來等於沒秀。 */
 "網路迷因":[
   "Roundabout","Astronomia","Ievan Polkka","Caramelldansen","Peanut Butter Jelly Time","In My Feelings","江南Style",
   "小蘋果","Baby Shark","PPAP","Let It Go","海草舞","學貓叫","花園種花",
   "黑桃A","烏梅子醬","孤勇者","熱愛105°c的你","芒種","好想你","想見你想見你想見你",
-  "如果可以","愛情你比我想的閣較偉大"
+  "如果可以","愛情你比我想的閣較偉大",
+  /* --- 台灣 2025～2026 爆紅（2026-08-19 查證，來源：DailyView 年度十大爆紅神曲） --- */
+  "沒出息","上車舞","大展鴻圖","露比醬","跳樓機","刀馬刀馬","Like Jennie","Soda Pop",
+  /* --- 華語／台灣的老梗 --- */
+  "一剪梅","保庇","最炫民族風","達拉崩吧","極樂淨土","小雞嗶嗶","野狼disco",
+  "你是我的花朵","恭喜發財",
+  /* --- 國際經典：大家都聽過，但沒人知道歌名 --- */
+  "Never Gonna Give You Up","Sandstorm","Crab Rave","Megalovania","Nyan Cat","Dragostea Din Tei",
+  "Careless Whisper","He's a Pirate","Take On Me","Africa","What Is Love","Baka Mitai",
+  "Gas Gas Gas","Running in the 90s","Yakety Sax","O Fortuna","Also Sprach Zarathustra",
+  "In the Hall of the Mountain King","Can Can","William Tell Overture","Habanera",
+  "Requiem for a Dream","Wii Sports"
 ],
 
 };
@@ -1819,7 +1865,57 @@ const MEMES={
   "好想你":"朱主愛",
   "想見你想見你想見你":"想見你",
   "如果可以":"韋禮安",
-  "愛情你比我想的閣較偉大":"茄子蛋"
+  "愛情你比我想的閣較偉大":"茄子蛋",
+  /* --- 台灣 2025～2026（2026-08-19 補） --- */
+  "沒出息":"王世堅",
+  "上車舞":"我們來接你了",
+  "大展鴻圖":"別墅裡面唱K",
+  "露比醬":"你喜歡什麼",
+  "跳樓機":"我們的感情好像跳樓機",
+  "刀馬刀馬":"刀馬刀馬",
+  "Like Jennie":"Jennie",
+  /* --- 華語／台灣老梗 --- */
+  "一剪梅":"雪花飄飄",
+  "保庇":"王彩樺",
+  "最炫民族風":"廣場舞",
+  "達拉崩吧":"繞口令",
+  "極樂淨土":"宅舞",
+  "小雞嗶嗶":"小雞",
+  "野狼disco":"東北",
+  "你是我的花朵":"伍佰",
+  "恭喜發財":"過年",
+  /* --- 國際經典：旋律人人會哼，名字沒人知道 --- */
+  "Never Gonna Give You Up":"Rickroll",
+  "Sandstorm":"沙塵暴",
+  "Crab Rave":"螃蟹舞",
+  "Megalovania":"傳說之下",
+  "Nyan Cat":"彩虹貓",
+  "Dragostea Din Tei":"玛雅呼嘿",
+  "Careless Whisper":"薩克斯風",
+  "He's a Pirate":"神鬼奇航",
+  "Take On Me":"a-ha",
+  "Africa":"Toto",
+  "What Is Love":"甩頭",
+  "Baka Mitai":"如龍",
+  "Gas Gas Gas":"頭文字D",
+  "Running in the 90s":"頭文字D",
+  "Yakety Sax":"快轉搞笑",
+  "O Fortuna":"史詩感",
+  "Also Sprach Zarathustra":"2001太空漫遊",
+  "In the Hall of the Mountain King":"越來越快",
+  "Can Can":"康康舞",
+  "William Tell Overture":"賽馬",
+  "Habanera":"卡門",
+  "Requiem for a Dream":"電影預告",
+  "Wii Sports":"Wii",
+  /* --- 動漫／電玩：作品名才是大家腦中冒出來的字 --- */
+  "殘酷天使的行動綱領":"EVA",
+  "紅蓮華":"鬼滅之刃",
+  "紅蓮之弓矢":"進擊的巨人",
+  "Among Us":"內鬼",
+  "Minecraft":"麥塊",
+  "超級瑪利歐兄弟":"瑪利歐",
+  "俄羅斯方塊":"俄羅斯方塊"
 };
 
 const CLASSICS=[
@@ -4197,6 +4293,22 @@ function drawRoll(id,c,opt){
     }
     g.fillStyle="hsl("+hue+","+sat+"%,"+lit+"%)";
     g.fillRect(x,y-hh/2,2.4,hh);
+  }
+  /* 節奏刻度：唱的人打的每一下。
+     ⚠ 時間直接吃跟聲音同一組數字（不是另外做動畫）——
+     查證過的作法：畫面要從同一份排程算，不然聽到的跟看到的會分家。 */
+  if(opt.snaps&&opt.snaps.length){
+    g.save();
+    for(const st of opt.snaps){
+      if(st<0||st>sp) continue;
+      const x=X(st);
+      g.strokeStyle="rgba(245,185,66,.55)"; g.lineWidth=1.5;
+      g.beginPath(); g.moveTo(x,0); g.lineTo(x,h); g.stroke();
+      /* 頂端一顆小點，密集的時候才分得出來有幾下 */
+      g.fillStyle="#f5b942";
+      g.beginPath(); g.arc(x,5,3,0,Math.PI*2); g.fill();
+    }
+    g.restore();
   }
   /* 框選：出題的人標「我強調的那幾個字就在這一段」。
      畫在音高點上面、播放頭下面，才不會蓋掉播到哪。 */
@@ -6584,41 +6696,129 @@ function setPtt(on){
   const b=$("tkBtn"); if(!b) return;
   b.classList.toggle("on",on&&!talkLock);
   b.classList.toggle("lock",talkLock);
-  b.firstChild.nodeValue=talkLock?"說話中（鎖定）":(on?"說話中…":"按住說話");
-  b.querySelector("span").textContent=talkLock?"點一下解開":"連點兩下鎖定，再點一下解開";
+  const t=b.querySelector("span");
+  /* firstChild 現在是進度條那個 <i>，文字要找純文字節點 */
+  for(const nd of b.childNodes) if(nd.nodeType===3&&nd.nodeValue.trim()){
+    nd.nodeValue=talkMode?"演唱中":"長按 1.5 秒開始唱"; break; }
+  if(t) t.textContent=talkMode?"點畫面打拍子，長按下面那條結束":"進去之後，點畫面任何地方就是打拍子";
 }
 
 /* 按住／放開。⚠ 一定要用 pointer 事件並且 setPointerCapture——
    手指按住之後滑出按鈕範圍，沒有捕捉的話 pointerup 不會回到按鈕上，
    聲音就一直開著關不掉。 */
+/* ============ 演唱模式（2026-08-19 Alvis 改的互動）============
+   舊的：按住才說話，放開就停。手被佔住 → 沒有第二根手指可以打拍子。
+   新的：**長按 1.5 秒進入演唱模式** → 之後點畫面任何地方都是打一下拍子
+        → **長按底部那條結束**。
+
+   ⚠ 為什麼退出要用底部那一條，不是「畫面任何地方長按」：
+   打拍子必須在**手指按下的那一瞬間**就算（晚一格節奏就歪了），
+   而長按也是從「手指按下去」開始的——兩個共用同一個動作。
+   所以如果退出可以在任何地方長按，**每次想結束都會先多打一下拍子**。
+   把退出集中在一條 data-nosnap 的區域，就沒有這個衝突。
+
+   ⚠ 聊天室不算節奏板。唱的人看不到大家講話（模式裡聽不到語音），
+   **聊天室是他唯一知道大家在猜什麼的管道**，一定要能正常捲動和點選。 */
+const HOLD_MS=1500;
+let talkMode=false, holdTimer=null, holdRAF=null;
+
+function holdBar(el,pct){
+  const i=el&&el.querySelector("i"); if(i) i.style.width=(pct*100)+"%";
+}
+function startHold(el,onDone){
+  const t0=performance.now();
+  const step=()=>{
+    const p=Math.min(1,(performance.now()-t0)/HOLD_MS);
+    holdBar(el,p);
+    if(p>=1){ holdRAF=null; holdBar(el,0); onDone(); return; }
+    holdRAF=requestAnimationFrame(step);
+  };
+  cancelHold(el); holdRAF=requestAnimationFrame(step);
+}
+function cancelHold(el){
+  if(holdRAF){ cancelAnimationFrame(holdRAF); holdRAF=null; }
+  if(el) holdBar(el,0);
+}
+
+function enterTalkMode(){
+  if(talkMode) return;
+  talkMode=true; talkLock=true;              // 鎖住，放開不會停
+  loadSnap();                                 // 先把彈指的聲音解好，不然第一下沒聲音
+  snapAt=[]; snapSent=0;
+  talkDown();
+  const bar=$("singBar"); if(bar) bar.classList.add("on");
+  setPtt(true);
+  try{ if(navigator.vibrate) navigator.vibrate([18,40,18]); }catch(e){}
+}
+function exitTalkMode(){
+  if(!talkMode) return;
+  talkMode=false; talkLock=false;
+  talkUp();
+  const bar=$("singBar"); if(bar) bar.classList.remove("on");
+  setPtt(false);
+  try{ if(navigator.vibrate) navigator.vibrate(25); }catch(e){}
+}
+
 function wireTalkBtn(){
   const b=$("tkBtn"); if(!b||b.dataset.wired) return; b.dataset.wired="1";
+  if(!b.querySelector("i.hold")){
+    const i=document.createElement("i"); i.className="hold"; b.insertBefore(i,b.firstChild);
+  }
   b.addEventListener("pointerdown",e=>{
     e.preventDefault();
     try{ b.setPointerCapture(e.pointerId); }catch(_){}
-    if(talkLock){ talkLock=false; talkUp(); return; }   // 鎖定中再按＝解開
-    talkDown();
+    if(talkMode) return;                       // 已經在模式裡，這顆不再有作用
+    startHold(b,enterTalkMode);
   });
   ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>
-    b.addEventListener(ev,()=>{ if(!talkLock) talkUp(); }));
-  b.addEventListener("dblclick",e=>{ e.preventDefault(); talkLock=true; setPtt(true); });
+    b.addEventListener(ev,()=>{ if(!talkMode) cancelHold(b); }));
   b.addEventListener("contextmenu",e=>e.preventDefault());
-  /* 鍵盤也要能唱：本來只吃滑鼠和觸控，只用鍵盤的人整個玩不了這一步。
-     空白鍵或 Enter 壓著＝按住說話，放開＝結束。
-     ⚠ 壓著不放會一直觸發 keydown（e.repeat），要擋掉，不然每一次都重開一段。 */
+  /* 鍵盤：空白／Enter 壓著 1.5 秒進入，模式裡按空白＝打拍子，Esc 結束。
+     ⚠ 壓著不放會一直觸發 keydown（e.repeat），要擋掉。 */
   b.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&talkMode){ e.preventDefault(); exitTalkMode(); return; }
     if(e.key!==" "&&e.key!=="Enter"&&e.key!=="Spacebar") return;
     e.preventDefault();
-    if(e.repeat||talking) return;
-    if(talkLock){ talkLock=false; talkUp(); return; }
-    talkDown();
+    if(e.repeat) return;
+    if(talkMode){ tapSnap(); return; }
+    startHold(b,enterTalkMode);
   });
   b.addEventListener("keyup",e=>{
     if(e.key!==" "&&e.key!=="Enter"&&e.key!=="Spacebar") return;
-    e.preventDefault();
-    if(!talkLock) talkUp();
+    if(!talkMode) cancelHold(b);
   });
-  b.addEventListener("blur",()=>{ if(talking&&!talkLock) talkUp(); });  // 切走了就收掉
+
+  /* 底部那條：長按結束 */
+  const dn=$("singDone");
+  if(dn&&!dn.dataset.wired){
+    dn.dataset.wired="1";
+    dn.addEventListener("pointerdown",e=>{
+      e.preventDefault();
+      try{ dn.setPointerCapture(e.pointerId); }catch(_){}
+      startHold(dn,exitTalkMode);
+    });
+    ["pointerup","pointercancel","lostpointercapture"].forEach(ev=>
+      dn.addEventListener(ev,()=>cancelHold(dn)));
+    dn.addEventListener("contextmenu",e=>e.preventDefault());
+  }
+
+  /* 節奏板：模式裡點畫面任何地方都算一下。
+     ⚠ 用 pointerdown 不是 click——click 要等放開，那樣節奏一定慢半拍。
+     ⚠ data-nosnap 的區域（底部條、聊天室）和按鈕不算，不然會誤觸。 */
+  if(!document.body.dataset.snapWired){
+    document.body.dataset.snapWired="1";
+    document.addEventListener("pointerdown",e=>{
+      if(!talkMode) return;
+      let el=e.target;
+      while(el&&el!==document.body){
+        if(el.dataset&&el.dataset.nosnap!==undefined) return;
+        const tag=el.tagName;
+        if(tag==="BUTTON"||tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"||tag==="A") return;
+        el=el.parentElement;
+      }
+      tapSnap();
+    },true);
+  }
 }
 
 /* ⚠ 分頁被切到背景（他跑去看 Discord）的話，requestAnimationFrame 會整個停掉，
@@ -6628,6 +6828,7 @@ function wireTalkBtn(){
    所以分頁一藏起來就強制放開，並且告訴他發生什麼事。 */
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden&&talking){
+    if(talkMode) exitTalkMode();
     talkLock=false;
     talkUp();
     const w=$("talkhid"); if(w) w.style.display="";
@@ -6682,7 +6883,7 @@ function talkTick(v){
   const m=$("tkMeter"); if(m) m.style.width=(v*100)+"%";
   if(cur.length&&!lvDrawRAF) lvDrawRAF=requestAnimationFrame(()=>{
     lvDrawRAF=null;
-    drawRoll("cvTalk",cur,{now:cur[cur.length-1].t});
+    drawRoll("cvTalk",cur,{now:cur[cur.length-1].t,snaps:snapAt});
   });
 }
 
@@ -6733,6 +6934,82 @@ async function liveBegin(){
   clearInterval(liveTimer);
   liveTimer=setInterval(livePush,liveChunk()*1000);
 }
+/* ================= 彈指（打拍子）=================
+   Alvis 2026-08-19：「只靠唱歌很難了解節奏」。唱的人一邊唱一邊打拍子，
+   聽的人就抓得到旋律和節奏的關係。
+
+   ⚠⚠ 最重要的一條：**節奏跟旋律的時間關係絕對不能跑掉。**
+   所以彈指**不是**當成「現在打一下」的即時訊息送出去——那樣它跟旋律是兩條
+   不同的網路路徑，一定會飄。
+   作法是：**把彈指的時間寫在跟旋律同一包裡**，用同一個時間軸（talkT0）。
+   聽的人收到之後照同一個 t0 排程，所以網路再怎麼塞、封包再怎麼亂序，
+   **同一包裡的東西不可能分開**。
+
+   ⚠ 為什麼另外放一格（s），不偷藏在音量的位元裡：
+   偷藏的話，分頁停在舊版的人會把那個位元當成音量 → 每彈一下他就聽到一聲爆音，
+   而且完全沒有錯誤訊息。另外放一格的話，舊版只是「讀不懂就跳過」——
+   **旋律完全正常，只是聽不到拍子**。少一個功能 ≠ 壞掉。 */
+let snapAt=[];          // 這一輪打過的拍子（秒，跟 cur[].t 同一個時間軸）
+let snapSent=0;         // 已經送出去到第幾個
+let lvSnaps=[];         // 聽的人收到的拍子（畫圖和播放共用）
+const SNAP_MIN_GAP=0.08;  // 兩下之間小於這個就忽略，防手抖連點變成雜訊
+
+/* 彈指的聲音：Alvis 給的真實採樣（OS_SJ_Verb_Finger_Snap.mp3，18KB）。
+   直接嵌成 base64，維持「一個檔案、一條連結就能玩」——不要變成要多帶一個檔案。
+
+   ⚠ 本來我自己合成了一顆，查了聲音設計的作法之後還重做過一次
+     （帶通 2.5kHz、加假殘響、起音用三個微脈衝）。
+     Alvis 2026-08-19 說不用捏了，給了真的採樣。**真的錄音永遠贏合成的**，
+     尤其這顆本來就帶殘響（檔名的 Verb），耳朵才會認成「有人在旁邊彈指」
+     而不是「電子 click」。
+
+   ⚠ 解碼是非同步的，所以一進演唱模式就先解好放著（loadSnap）。
+     等到手指按下去才解，第一下會沒聲音。
+
+   要換聲音：把下面這串換掉就好，程式不用動。 */
+const SNAP_MP3="data:audio/mpeg;base64,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";
+let SNAP_BUF=null, snapLoading=null;
+function loadSnap(){
+  if(SNAP_BUF||snapLoading) return snapLoading;
+  ensureAC(); if(!AC) return null;
+  snapLoading=(async()=>{
+    try{
+      const ab=await (await fetch(SNAP_MP3)).arrayBuffer();
+      SNAP_BUF=await AC.decodeAudioData(ab);
+    }catch(e){ SNAP_BUF=null; }
+    return SNAP_BUF;
+  })();
+  return snapLoading;
+}
+/* 在指定時間播一下。at 省略就是馬上。 */
+function playSnap(at){
+  ensureAC();
+  if(!SNAP_BUF){ loadSnap(); return; }        // 還沒解好就先跳過，下一下就有了
+  try{
+    const src=AC.createBufferSource(); src.buffer=SNAP_BUF;
+    const g=AC.createGain(); g.gain.value=0.95;
+    src.connect(g); g.connect(AC.destination);
+    /* ⚠ 一定要用絕對時間排程，不能用 setTimeout。
+       查證過（Chris Wilson「A Tale of Two Clocks」）：setTimeout／setInterval 是
+       「盡力而為」的，每一拍都會累積誤差，幾分鐘就飄掉。
+       節奏一定要從音訊時鐘算出時間、提前排進去。 */
+    src.start(at==null?AC.currentTime:Math.max(AC.currentTime,at));
+  }catch(e){}
+}
+/* 唱的人按了一下。⚠ 時間一定要在「手指按下的那一瞬間」抓，
+   不能等畫面更新——晚一格節奏就歪了，這是不能妥協的。 */
+function tapSnap(){
+  if(!talking||!talkT0) return false;
+  const t=(performance.now()-talkT0)/1000;
+  if(snapAt.length&&t-snapAt[snapAt.length-1]<SNAP_MIN_GAP) return false;
+  snapAt.push(t);
+  playSnap();                         // 自己馬上聽到，不等網路
+  try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
+  const w=$("wrapTalk"); if(w){ w.classList.add("snapflash");
+    setTimeout(()=>w.classList.remove("snapflash"),110); }
+  return true;
+}
+
 function livePush(final){
   if(!Net||!cur.length) return;
   /* +1 是因為「第 n 格」也算已經唱出來了。少了它每包都會漏掉最後一格，
@@ -6747,7 +7024,19 @@ function livePush(final){
   const bytes=packChunk(cur,liveSent,nowIdx);
   const from=liveSent;
   liveSent=nowIdx;
-  Net.push("live/f",{i:from,d:toB64(bytes)});
+  /* 這一包涵蓋的時間範圍內有哪些拍子。存「第幾格」（相對這一包的起點），
+     跟旋律用同一個 LIVE_FPS 的格子，所以對得死死的。 */
+  const t0=from/LIVE_FPS, t1=nowIdx/LIVE_FPS, offs=[];
+  for(let i=snapSent;i<snapAt.length;i++){
+    const st=snapAt[i];
+    if(st<t0) { snapSent=i+1; continue; }
+    if(st>=t1) break;
+    offs.push(Math.round(st*LIVE_FPS)-from);
+    snapSent=i+1;
+  }
+  const pkt={i:from,d:toB64(bytes)};
+  if(offs.length) pkt.s=offs.join(",");     // ⚠ 舊版讀不懂 s 會直接跳過，旋律照樣正常
+  Net.push("live/f",pkt);
   /* 送出的節奏（角落那行數字要用）。太快代表網路在追、太慢代表分頁被凍住了。 */
   lvStats.pkt++; lvStats.secN++;
   const t=Date.now();
@@ -7164,7 +7453,7 @@ function liveFaceStart(t0){
 }
 
 function liveReset(take){
-  lvTake=take; lvSeen={}; lvCurve=[]; faceResetRange();
+  lvTake=take; lvSeen={}; lvCurve=[]; lvSnaps=[]; faceResetRange();
   liveAudioStop();
   curve=null;
   drawRoll("cvLive",[{t:0,m:null,v:0}],{span:1});
@@ -7173,21 +7462,40 @@ function liveReset(take){
    用在「他已經唱完、我才剛進房間」的人身上：波形要看得到，但不能突然放一段給他聽。 */
 function liveFeed(frames,silent){
   const list=Object.keys(frames||{}).sort();
-  let added=[];
+  let added=[], newSnaps=[];
   for(const k of list){
     if(lvSeen[k]) continue;
     lvSeen[k]=1;
     const x=frames[k];
     try{ added=added.concat(unpackChunk(fromB64(x.d),x.i)); }catch(e){}
+    /* 拍子：跟旋律同一包送來的，所以時間軸天生就對齊。
+       ⚠ 舊版沒有 s 這個欄位，讀到 undefined 就跳過，旋律照樣正常。 */
+    if(x&&x.s) try{
+      for(const o of String(x.s).split(",")){
+        const off=parseInt(o,10);
+        if(!isNaN(off)) newSnaps.push((x.i+off)/LIVE_FPS);
+      }
+    }catch(e){}
   }
+  if(newSnaps.length) lvSnaps=lvSnaps.concat(newSnaps).sort((a,b)=>a-b);
   if(!added.length) return;
   added.sort((a,b)=>a.t-b.t);
   lvCurve=lvCurve.concat(added).sort((a,b)=>a.t-b.t);
   curve=lvCurve;
   if(!silent) liveAudioAppend(added);
+  /* ⚠ 一定要放在 liveAudioAppend 後面：播放器 LV 是在那裡面才建立的。
+     放前面的話，**第一包的拍子會全部被丟掉**（那時候 LV 還是 null），
+     而且只影響第一包，很難發現。
+     排程用旋律的同一個 t0 —— 這就是「節奏跟旋律的關係不會變動」的保證：
+     兩個都是 t0+t，網路再亂也不可能分開。
+     ⚠ 已經過去的不補播，不然中途進來的人會被倒放一串拍子。 */
+  if(!silent&&LV&&newSnaps.length) for(const t of newSnaps){
+    const at=LV.t0+t;
+    if(at>AC.currentTime-0.05) playSnap(at);
+  }
   if(!lvDrawRAF) lvDrawRAF=requestAnimationFrame(()=>{
     lvDrawRAF=null;
-    drawRoll("cvLive",lvCurve,{span:Math.max(2,lvCurve[lvCurve.length-1].t+0.5)});
+    drawRoll("cvLive",lvCurve,{span:Math.max(2,lvCurve[lvCurve.length-1].t+0.5),snaps:lvSnaps});
   });
 }
 /* 串流播放：開一組振盪器，資料到了就往後面接排程。
@@ -7295,7 +7603,7 @@ function liveAudioStop(){
 /* 版本編號：改遊戲的時候要一起改。
    用途是「朋友到底拿到哪一版」一眼就看得出來——
    2026-08-03 出過事：貼出去的網址卡在舊版本，朋友點開看到的是三個入口的舊畫面。 */
-const BUILD="0817p";
+const BUILD="0819a";
 $("ver").textContent=BUILD; $("ver2").textContent=BUILD; $("chkver").textContent=BUILD;
 
 /* 怎麼玩的四格漫畫，整張圖直接寫在這裡。
